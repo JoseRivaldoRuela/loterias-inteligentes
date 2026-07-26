@@ -3,11 +3,11 @@ import { Navigate, Route, Routes } from 'react-router'
 import { useAuth } from '@/features/auth/context/AuthContext'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
+import { LotteriesPage } from '@/features/lotteries/pages/LotteriesPage'
 import {
   CheckingPage,
   GeneratorPage,
   LaboratoryPage,
-  LotteriesPage,
   SettingsPage,
   SimulationsPage,
   StatisticsPage,
