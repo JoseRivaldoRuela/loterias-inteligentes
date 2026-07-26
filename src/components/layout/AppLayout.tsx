@@ -1,0 +1,205 @@
+import type { ReactNode } from 'react'
+import { NavLink } from 'react-router'
+import {
+  BarChart3,
+  BrainCircuit,
+  CheckCircle2,
+  ChevronDown,
+  Gauge,
+  ListChecks,
+  LogOut,
+  Menu,
+  Settings,
+  Sparkles,
+  Trophy,
+} from 'lucide-react'
+
+import { useAuth } from '@/features/auth/context/AuthContext'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Separator } from '@/components/ui/separator'
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from '@/components/ui/sheet'
+
+type AppLayoutProps = {
+  children: ReactNode
+}
+
+const menuItems = [
+  { label: 'Dashboard', path: '/dashboard', icon: Gauge },
+  { label: 'Loterias', path: '/loterias', icon: Trophy },
+  { label: 'Gerador', path: '/gerador', icon: Sparkles },
+  { label: 'Conferência', path: '/conferencia', icon: CheckCircle2 },
+  { label: 'Estatísticas', path: '/estatisticas', icon: BarChart3 },
+  { label: 'Simulações', path: '/simulacoes', icon: ListChecks },
+  { label: 'Laboratório', path: '/laboratorio', icon: BrainCircuit },
+  { label: 'Configurações', path: '/configuracoes', icon: Settings },
+]
+
+function SidebarContent() {
+  return (
+    <div className="flex h-full flex-col bg-slate-950 text-white">
+      <div className="px-5 py-6">
+        <h1 className="text-lg font-bold">Loterias Inteligentes</h1>
+
+        <p className="mt-1 text-xs text-slate-400">
+          Análise, geração e estratégias
+        </p>
+      </div>
+
+      <Separator className="bg-slate-800" />
+
+      <nav className="flex-1 space-y-1 p-3">
+        {menuItems.map(({ label, path, icon: Icon }) => (
+          <NavLink
+            key={path}
+            to={path}
+            className={({ isActive }) =>
+              `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                isActive
+                  ? 'bg-primary font-medium text-primary-foreground'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`
+            }
+          >
+            <Icon className="size-4" />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="border-t border-slate-800 p-4 text-xs text-slate-500">
+        Versão inicial
+      </div>
+    </div>
+  )
+}
+
+export function AppLayout({ children }: AppLayoutProps) {
+  const { user, signOut } = useAuth()
+
+  async function handleSignOut() {
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Erro ao sair:', error)
+    }
+  }
+
+  const email = user?.email ?? 'Usuário'
+  const initials = email.slice(0, 2).toUpperCase()
+
+  return (
+    <div className="min-h-screen bg-muted/40">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">
+        <SidebarContent />
+      </aside>
+
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+          <div className="flex h-16 items-center justify-between px-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <Sheet>
+                <SheetTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="lg:hidden"
+                    />
+                  }
+                >
+                  <Menu className="size-5" />
+                </SheetTrigger>
+
+                <SheetContent side="left" className="w-72 p-0">
+                  <SidebarContent />
+                </SheetContent>
+              </Sheet>
+
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Loterias Inteligentes
+                </h2>
+
+                <p className="text-xs text-muted-foreground">
+                  Plataforma de análise e geração
+                </p>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="sm:hidden"
+              aria-label="Sair"
+              onClick={handleSignOut}
+            >
+              <LogOut className="size-4" />
+            </Button>
+
+            <div className="hidden sm:block">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-auto gap-2 px-2 py-1.5"
+                    />
+                  }
+                >
+                  <Avatar className="size-8">
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  </Avatar>
+
+                  <div className="text-left">
+                    <p className="max-w-48 truncate text-sm font-medium">
+                      {email}
+                    </p>
+
+                    <p className="text-xs text-muted-foreground">Usuário</p>
+                  </div>
+
+                  <ChevronDown className="size-4 text-muted-foreground" />
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel>
+                    <p className="truncate">{email}</p>
+
+                    <p className="text-xs font-normal text-muted-foreground">
+                      Conta do Loterias Inteligentes
+                    </p>
+                  </DropdownMenuLabel>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="size-4" />
+                    Sair
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </header>
+
+        <main className="p-4 sm:p-6">{children}</main>
+      </div>
+    </div>
+  )
+}

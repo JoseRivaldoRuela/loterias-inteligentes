@@ -3,6 +3,15 @@ import { Navigate, Route, Routes } from 'react-router'
 import { useAuth } from '@/features/auth/context/AuthContext'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
+import {
+  CheckingPage,
+  GeneratorPage,
+  LaboratoryPage,
+  LotteriesPage,
+  SettingsPage,
+  SimulationsPage,
+  StatisticsPage,
+} from '@/features/placeholder/pages/PlaceholderPages'
 
 export function AppRouter() {
   const { session, loading } = useAuth()
@@ -15,28 +24,28 @@ export function AppRouter() {
     )
   }
 
+  if (!session) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    )
+  }
+
   return (
     <Routes>
-      <Route
-        path="/login"
-        element={
-          session ? <Navigate to="/dashboard" replace /> : <LoginPage />
-        }
-      />
+      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/loterias" element={<LotteriesPage />} />
+      <Route path="/gerador" element={<GeneratorPage />} />
+      <Route path="/conferencia" element={<CheckingPage />} />
+      <Route path="/estatisticas" element={<StatisticsPage />} />
+      <Route path="/simulacoes" element={<SimulationsPage />} />
+      <Route path="/laboratorio" element={<LaboratoryPage />} />
+      <Route path="/configuracoes" element={<SettingsPage />} />
 
-      <Route
-        path="/dashboard"
-        element={
-          session ? <DashboardPage /> : <Navigate to="/login" replace />
-        }
-      />
-
-      <Route
-        path="*"
-        element={
-          <Navigate to={session ? '/dashboard' : '/login'} replace />
-        }
-      />
+      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )
 }
