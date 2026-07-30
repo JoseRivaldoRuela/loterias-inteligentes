@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 
-import { supabase } from '@/infrastructure/supabase/client'
+import { useAuth } from '@/features/auth/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -13,59 +13,80 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+type AuthMode = 'login' | 'register' | 'reset'
+
 export function LoginPage() {
-  const [registerMode, setRegisterMode] = useState(false)
+  const { signIn, signUp, resetPassword } = useAuth()
+
+  const [mode, setMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [isError, setIsError] = useState(false)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     setLoading(true)
     setMessage('')
+    setIsError(false)
 
     try {
-      if (registerMode) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-        })
-
-        if (error) {
-          throw error
-        }
+      if (mode === 'register') {
+        await signUp(email, password)
 
         setMessage(
           'Cadastro realizado. Verifique seu e-mail para confirmar a conta.',
         )
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
 
-        if (error) {
-          throw error
-        }
+        return
       }
+
+      if (mode === 'reset') {
+        await resetPassword(email)
+
+        setMessage(
+          'Enviamos um link para redefinição de senha. Verifique seu e-mail.',
+        )
+
+        return
+      }
+
+      await signIn(email, password)
     } catch (error) {
-      const errorMessage =
+      setIsError(true)
+
+      setMessage(
         error instanceof Error
           ? error.message
-          : 'Não foi possível concluir a operação.'
-
-      setMessage(errorMessage)
+          : 'Não foi possível concluir a operação.',
+      )
     } finally {
       setLoading(false)
     }
   }
 
-  function toggleMode() {
-    setRegisterMode((currentMode) => !currentMode)
+  function changeMode(nextMode: AuthMode) {
+    setMode(nextMode)
     setMessage('')
+    setIsError(false)
+    setPassword('')
   }
+
+  const title =
+    mode === 'login'
+      ? 'Entrar'
+      : mode === 'register'
+        ? 'Criar conta'
+        : 'Recuperar senha'
+
+  const description =
+    mode === 'login'
+      ? 'Entre na sua área'
+      : mode === 'register'
+        ? 'Crie sua conta gratuita'
+        : 'Informe seu e-mail para receber o link de recuperação'
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted p-4">
@@ -75,9 +96,7 @@ export function LoginPage() {
             Loterias Inteligentes
           </CardTitle>
 
-          <CardDescription>
-            {registerMode ? 'Crie sua conta' : 'Entre na sua área'}
-          </CardDescription>
+          <CardDescription>{description}</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -95,47 +114,77 @@ export function LoginPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
+            {mode !== 'reset' && (
+              <div className="space-y-2">
+                <Label htmlFor="password">Senha</Label>
 
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete={
-                  registerMode ? 'new-password' : 'current-password'
-                }
-                minLength={6}
-                required
-              />
-            </div>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={
+                    mode === 'register'
+                      ? 'new-password'
+                      : 'current-password'
+                  }
+                  minLength={6}
+                  required
+                />
+              </div>
+            )}
 
             <Button className="w-full" type="submit" disabled={loading}>
-              {loading
-                ? 'Aguarde...'
-                : registerMode
-                  ? 'Criar conta'
-                  : 'Entrar'}
+              {loading ? 'Aguarde...' : title}
             </Button>
           </form>
 
           {message && (
-            <p className="mt-5 rounded-md bg-muted p-3 text-center text-sm">
+            <p
+              className={`mt-5 rounded-md p-3 text-center text-sm ${
+                isError
+                  ? 'bg-destructive/10 text-destructive'
+                  : 'bg-muted text-foreground'
+              }`}
+            >
               {message}
             </p>
           )}
 
-          <Button
-            className="mt-4 w-full"
-            type="button"
-            variant="ghost"
-            onClick={toggleMode}
-          >
-            {registerMode
-              ? 'Já tenho uma conta'
-              : 'Ainda não tenho uma conta'}
-          </Button>
+          <div className="mt-4 space-y-2">
+            {mode === 'login' && (
+              <>
+                <Button
+                  className="w-full"
+                  type="button"
+                  variant="ghost"
+                  onClick={() => changeMode('reset')}
+                >
+                  Esqueci minha senha
+                </Button>
+
+                <Button
+                  className="w-full"
+                  type="button"
+                  variant="ghost"
+                  onClick={() => changeMode('register')}
+                >
+                  Ainda não tenho uma conta
+                </Button>
+              </>
+            )}
+
+            {mode !== 'login' && (
+              <Button
+                className="w-full"
+                type="button"
+                variant="ghost"
+                onClick={() => changeMode('login')}
+              >
+                Voltar para o login
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     </main>

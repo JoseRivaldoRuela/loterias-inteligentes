@@ -5,6 +5,7 @@ import {
   BrainCircuit,
   CheckCircle2,
   ChevronDown,
+  Folder,
   Gauge,
   ListChecks,
   LogOut,
@@ -12,16 +13,15 @@ import {
   Settings,
   Sparkles,
   Trophy,
+  User,
 } from 'lucide-react'
 
-import { useAuth } from '@/features/auth/context/AuthContext'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -31,6 +31,7 @@ import {
   SheetContent,
   SheetTrigger,
 } from '@/components/ui/sheet'
+import { useAuth } from '@/features/auth/context/AuthContext'
 
 type AppLayoutProps = {
   children: ReactNode
@@ -39,6 +40,7 @@ type AppLayoutProps = {
 const menuItems = [
   { label: 'Dashboard', path: '/dashboard', icon: Gauge },
   { label: 'Loterias', path: '/loterias', icon: Trophy },
+  { label: 'Bibliotecas', path: '/bibliotecas', icon: Folder },
   { label: 'Gerador', path: '/gerador', icon: Sparkles },
   { label: 'Conferência', path: '/conferencia', icon: CheckCircle2 },
   { label: 'Estatísticas', path: '/estatisticas', icon: BarChart3 },
@@ -87,7 +89,7 @@ function SidebarContent() {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const { user, signOut } = useAuth()
+  const { user, signOut, isSubscriber } = useAuth()
 
   async function handleSignOut() {
     try {
@@ -99,6 +101,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const email = user?.email ?? 'Usuário'
   const initials = email.slice(0, 2).toUpperCase()
+  const accountType = isSubscriber ? 'Assinante' : 'Usuário gratuito'
 
   return (
     <div className="min-h-screen bg-muted/40">
@@ -146,7 +149,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               size="icon"
               className="sm:hidden"
               aria-label="Sair"
-              onClick={handleSignOut}
+              onClick={() => void handleSignOut()}
             >
               <LogOut className="size-4" />
             </Button>
@@ -171,24 +174,32 @@ export function AppLayout({ children }: AppLayoutProps) {
                       {email}
                     </p>
 
-                    <p className="text-xs text-muted-foreground">Usuário</p>
+                    <p className="text-xs text-muted-foreground">
+                      {accountType}
+                    </p>
                   </div>
 
                   <ChevronDown className="size-4 text-muted-foreground" />
                 </DropdownMenuTrigger>
 
                 <DropdownMenuContent align="end" className="w-64">
-                  <DropdownMenuLabel>
-                    <p className="truncate">{email}</p>
+                  <DropdownMenuItem disabled>
+                    <User className="size-4" />
 
-                    <p className="text-xs font-normal text-muted-foreground">
-                      Conta do Loterias Inteligentes
-                    </p>
-                  </DropdownMenuLabel>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {email}
+                      </p>
+
+                      <p className="text-xs text-muted-foreground">
+                        {accountType}
+                      </p>
+                    </div>
+                  </DropdownMenuItem>
 
                   <DropdownMenuSeparator />
 
-                  <DropdownMenuItem onClick={handleSignOut}>
+                  <DropdownMenuItem onClick={() => void handleSignOut()}>
                     <LogOut className="size-4" />
                     Sair
                   </DropdownMenuItem>
