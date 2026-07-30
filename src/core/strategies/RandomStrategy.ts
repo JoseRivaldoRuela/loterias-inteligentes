@@ -8,6 +8,7 @@ export type GeneratedTicket = {
 export type RandomGenerationOptions = {
   ticketCount: number
   numbersPerTicket: number
+  selectedNumbers: number[]
   allowDuplicateTickets?: boolean
 }
 
@@ -21,14 +22,18 @@ export class RandomStrategy {
     const {
       ticketCount,
       numbersPerTicket,
+      selectedNumbers,
       allowDuplicateTickets = false,
     } = options
 
     if (!Number.isInteger(ticketCount) || ticketCount <= 0) {
-      throw new Error('A quantidade de cartões deve ser maior que zero.')
+      throw new Error(
+        'A quantidade de cartões deve ser um número inteiro maior que zero.',
+      )
     }
 
     if (
+      !Number.isInteger(numbersPerTicket) ||
       numbersPerTicket < config.minimumBet ||
       numbersPerTicket > config.maximumBet
     ) {
@@ -37,11 +42,33 @@ export class RandomStrategy {
       )
     }
 
-    const availableNumbers = LotteryEngine.getAvailableNumbers(config)
+    this.validateSelectedNumbers(config, selectedNumbers)
+
+    if (selectedNumbers.length < numbersPerTicket) {
+      throw new Error(
+        `Foram selecionadas ${selectedNumbers.length} dezenas, mas cada cartão precisa de ${numbersPerTicket}.`,
+      )
+    }
+
+    const possibleCombinations = this.calculateCombinations(
+      selectedNumbers.length,
+      numbersPerTicket,
+    )
+
+    if (!allowDuplicateTickets && ticketCount > possibleCombinations) {
+      throw new Error(
+        `Com ${selectedNumbers.length} dezenas, existem somente ${possibleCombinations} combinações únicas de ${numbersPerTicket} dezenas.`,
+      )
+    }
+
+    const sequencePosition = new Map(
+      selectedNumbers.map((number, index) => [number, index]),
+    )
+
     const tickets: GeneratedTicket[] = []
     const generatedKeys = new Set<string>()
 
-    const maximumAttempts = Math.max(ticketCount * 100, 1000)
+    const maximumAttempts = Math.max(ticketCount * 500, 5000)
     let attempts = 0
 
     while (tickets.length < ticketCount) {
@@ -53,41 +80,114 @@ export class RandomStrategy {
         )
       }
 
-      const shuffledNumbers = [...availableNumbers]
-
-      for (
-        let index = shuffledNumbers.length - 1;
-        index > 0;
-        index -= 1
-      ) {
-        const randomIndex = Math.floor(Math.random() * (index + 1))
-
-        ;[shuffledNumbers[index], shuffledNumbers[randomIndex]] = [
-          shuffledNumbers[randomIndex],
-          shuffledNumbers[index],
-        ]
-      }
-
-      const numbers = LotteryEngine.sortTicket(
-        shuffledNumbers.slice(0, numbersPerTicket),
+      const selectedTicketNumbers = this.selectRandomNumbers(
+        selectedNumbers,
+        numbersPerTicket,
       )
 
-      const validation = LotteryEngine.validateTicket(config, numbers)
+      const canonicalKey = [...selectedTicketNumbers]
+        .sort((first, second) => first - second)
+        .join('-')
+
+      if (!allowDuplicateTickets && generatedKeys.has(canonicalKey)) {
+        continue
+      }
+
+      const orderedNumbers = [...selectedTicketNumbers].sort(
+        (first, second) =>
+          (sequencePosition.get(first) ?? 0) -
+          (sequencePosition.get(second) ?? 0),
+      )
+
+      const validation = LotteryEngine.validateTicket(
+        config,
+        orderedNumbers,
+      )
 
       if (!validation.valid) {
         throw new Error(validation.errors.join(' '))
       }
 
-      const ticketKey = numbers.join('-')
+      generatedKeys.add(canonicalKey)
 
-      if (!allowDuplicateTickets && generatedKeys.has(ticketKey)) {
-        continue
-      }
-
-      generatedKeys.add(ticketKey)
-      tickets.push({ numbers })
+      tickets.push({
+        numbers: orderedNumbers,
+      })
     }
 
     return tickets
+  }
+
+  private static validateSelectedNumbers(
+    config: LotteryConfig,
+    numbers: number[],
+  ): void {
+    if (numbers.length === 0) {
+      throw new Error('Selecione pelo menos uma dezena.')
+    }
+
+    const uniqueNumbers = new Set(numbers)
+
+    if (uniqueNumbers.size !== numbers.length) {
+      throw new Error('A sequência contém dezenas repetidas.')
+    }
+
+    const invalidNumbers = numbers.filter(
+      (number) =>
+        !Number.isInteger(number) ||
+        number < config.numberStart ||
+        number > config.numberEnd,
+    )
+
+    if (invalidNumbers.length > 0) {
+      throw new Error(
+        `Dezenas inválidas na sequência: ${invalidNumbers.join(', ')}.`,
+      )
+    }
+  }
+
+  private static selectRandomNumbers(
+    sequence: number[],
+    numbersPerTicket: number,
+  ): number[] {
+    const shuffledNumbers = [...sequence]
+
+    for (
+      let index = shuffledNumbers.length - 1;
+      index > 0;
+      index -= 1
+    ) {
+      const randomIndex = Math.floor(Math.random() * (index + 1))
+
+      ;[shuffledNumbers[index], shuffledNumbers[randomIndex]] = [
+        shuffledNumbers[randomIndex],
+        shuffledNumbers[index],
+      ]
+    }
+
+    return shuffledNumbers.slice(0, numbersPerTicket)
+  }
+
+  private static calculateCombinations(
+    totalNumbers: number,
+    selectedNumbers: number,
+  ): number {
+    const smallerSelection = Math.min(
+      selectedNumbers,
+      totalNumbers - selectedNumbers,
+    )
+
+    let result = 1
+
+    for (let index = 1; index <= smallerSelection; index += 1) {
+      result =
+        (result * (totalNumbers - smallerSelection + index)) / index
+
+      if (result >= Number.MAX_SAFE_INTEGER) {
+        return Number.MAX_SAFE_INTEGER
+      }
+    }
+
+    return Math.round(result)
   }
 }

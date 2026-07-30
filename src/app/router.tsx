@@ -2,11 +2,12 @@ import { Navigate, Route, Routes } from 'react-router'
 
 import { useAuth } from '@/features/auth/context/AuthContext'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
+import { ClosuresPage } from '@/features/closures/pages/ClosuresPage'
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
+import { GeneratorPage } from '@/features/generator/pages/GeneratorPage'
 import { LotteriesPage } from '@/features/lotteries/pages/LotteriesPage'
 import {
   CheckingPage,
-  GeneratorPage,
   LaboratoryPage,
   SettingsPage,
   SimulationsPage,
@@ -19,7 +20,9 @@ export function AppRouter() {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-muted">
-        <p className="text-sm text-muted-foreground">Carregando...</p>
+        <p className="text-sm text-muted-foreground">
+          Carregando...
+        </p>
       </main>
     )
   }
@@ -28,7 +31,10 @@ export function AppRouter() {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route
+          path="*"
+          element={<Navigate to="/login" replace />}
+        />
       </Routes>
     )
   }
@@ -38,14 +44,22 @@ export function AppRouter() {
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/loterias" element={<LotteriesPage />} />
       <Route path="/gerador" element={<GeneratorPage />} />
+      <Route path="/fechamentos" element={<ClosuresPage />} />
       <Route path="/conferencia" element={<CheckingPage />} />
       <Route path="/estatisticas" element={<StatisticsPage />} />
       <Route path="/simulacoes" element={<SimulationsPage />} />
       <Route path="/laboratorio" element={<LaboratoryPage />} />
       <Route path="/configuracoes" element={<SettingsPage />} />
 
-      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route
+        path="/login"
+        element={<Navigate to="/dashboard" replace />}
+      />
+
+      <Route
+        path="*"
+        element={<Navigate to="/dashboard" replace />}
+      />
     </Routes>
   )
 }
