@@ -113,7 +113,7 @@ export const BettingPoolRepository = {
       .eq('active', true)
       .order('name')
     if (error) throw new Error(`Erro ao carregar participantes: ${error.message}`)
-    return (data ?? []).map((row) => ({
+    const participants = (data ?? []).map((row) => ({
       id: row.id,
       name: row.name,
       email: row.email,
@@ -121,6 +121,24 @@ export const BettingPoolRepository = {
       shareCount: row.share_count,
       active: row.active,
     }))
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: membership } = await supabase
+        .from('betting_pool_members')
+        .select('id, share_count')
+        .eq('betting_pool_id', poolId)
+        .eq('user_id', user.id)
+        .eq('status', 'accepted')
+        .gt('share_count', 0)
+        .maybeSingle()
+      if (membership) {
+        const { data: profile } = await supabase.from('profiles').select('name').eq('id', user.id).maybeSingle()
+        const ownerName = profile?.name?.trim() || user.user_metadata?.full_name || user.email || 'Organizador'
+        const alreadyListed = participants.some((participant) => participant.email && participant.email.toLowerCase() === user.email?.toLowerCase())
+        if (!alreadyListed) participants.unshift({ id: membership.id, name: ownerName, email: user.email ?? null, phone: null, shareCount: membership.share_count, active: true })
+      }
+    }
+    return participants
   },
   async listParticipantSummaries(poolIds: string[]): Promise<PoolParticipantSummary[]> {
     if (poolIds.length === 0) return []

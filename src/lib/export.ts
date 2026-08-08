@@ -118,3 +118,69 @@ export function exportTicketsAsPdf(
   const sanitized = sanitizeFileName(fileName)
   doc.save(`${sanitized}.pdf`)
 }
+
+type PoolPdfParticipant = { name: string; email: string | null; phone: string | null; shareCount: number }
+type PoolPdfGame = { name: string; tickets: number[][] }
+
+export function exportPoolAsPdf(input: {
+  fileName: string
+  poolName: string
+  contests: string
+  totalAmount: string
+  sharePrice: string
+  totalShares: number
+  participants: PoolPdfParticipant[]
+  games: PoolPdfGame[]
+}) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const margin = 40
+
+  doc.setFontSize(18)
+  doc.text(input.poolName, margin, 42)
+  doc.setFontSize(10)
+  doc.setTextColor(90)
+  doc.text(`${input.contests} | Total: ${input.totalAmount} | ${input.totalShares} cotas | Cota: ${input.sharePrice}`, margin, 60, { maxWidth: pageWidth - margin * 2 })
+
+  doc.setTextColor(0)
+  doc.setFontSize(13)
+  doc.text(`Participantes (${input.participants.length})`, margin, 88)
+  autoTable(doc, {
+    startY: 98,
+    head: [['#', 'Nome', 'Contato', 'Cotas']],
+    body: input.participants.map((participant, index) => [String(index + 1), participant.name, [participant.email, participant.phone].filter(Boolean).join(' / ') || '-', String(participant.shareCount)]),
+    theme: 'grid',
+    headStyles: { fillColor: [15, 76, 129], textColor: 255 },
+    styles: { fontSize: 9, cellPadding: 5 },
+    columnStyles: { 0: { cellWidth: 28 }, 3: { cellWidth: 45, halign: 'center' } },
+    margin: { left: margin, right: margin },
+  })
+
+  let currentY = ((doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 98) + 26
+  doc.setFontSize(13)
+  doc.text(`Jogos (${input.games.reduce((sum, game) => sum + game.tickets.length, 0)} cartões)`, margin, currentY)
+  currentY += 10
+
+  input.games.forEach((game) => {
+    autoTable(doc, {
+      startY: currentY,
+      head: [[game.name, 'Dezenas']],
+      body: game.tickets.map((ticket, index) => [`Cartão ${index + 1} (${ticket.length})`, ticket.map(formatTicketNumber).join(' - ')]),
+      theme: 'grid',
+      headStyles: { fillColor: [31, 120, 82], textColor: 255 },
+      styles: { fontSize: 9, cellPadding: 5, overflow: 'linebreak' },
+      columnStyles: { 0: { cellWidth: 105 } },
+      margin: { left: margin, right: margin },
+    })
+    currentY = ((doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? currentY) + 16
+  })
+
+  const pageCount = doc.getNumberOfPages()
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page)
+    doc.setFontSize(8)
+    doc.setTextColor(110)
+    doc.text(`Loterias Inteligentes - Página ${page} de ${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 20, { align: 'center' })
+  }
+  doc.save(`${sanitizeFileName(input.fileName)}.pdf`)
+}

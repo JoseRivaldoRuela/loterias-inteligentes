@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Plus, Trash2, Users } from 'lucide-react'
+import { CheckCircle2, Download, Plus, Trash2, Users } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 
@@ -18,6 +18,7 @@ import { useSavedGameSets } from '@/features/saved-games/hooks/useSavedGameSets'
 import { useSavedGameTickets } from '@/features/saved-games/hooks/useSavedGameTickets'
 import { BettingPoolRepository, type BettingPool } from '@/infrastructure/repositories/BettingPoolRepository'
 import { useBettingPools } from '../hooks/useBettingPools'
+import { exportPoolAsPdf } from '@/lib/export'
 
 const labels: Record<string, string> = { draft: 'Rascunho', active: 'Ativo', closed: 'Fechado', completed: 'Concluído', canceled: 'Cancelado' }
 type ParticipantForm = { name: string; email: string; phone: string; shareCount: string }
@@ -87,6 +88,20 @@ export function PoolsPage() {
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Não foi possível criar o bolão.') }
   }
 
+  function exportSelectedPoolPdf() {
+    if (!selectedPool || !poolParticipants.data || !poolGames.data) return
+    exportPoolAsPdf({
+      fileName: `bolao_${selectedPool.name}`,
+      poolName: selectedPool.name,
+      contests: selectedPool.firstContestNumber ? `Concursos ${selectedPool.firstContestNumber}${selectedPool.lastContestNumber ? ` a ${selectedPool.lastContestNumber}` : ''}` : 'Concursos não informados',
+      totalAmount: selectedPool.totalAmount == null ? 'Não informado' : PricingService.formatCurrency(selectedPool.totalAmount),
+      sharePrice: selectedPool.sharePrice == null ? 'Não informado' : PricingService.formatCurrency(selectedPool.sharePrice),
+      totalShares: selectedPool.totalShares,
+      participants: poolParticipants.data,
+      games: poolGames.data.map(({ set, tickets }) => ({ name: set.name, tickets: tickets.map((ticket) => ticket.numbers) })),
+    })
+  }
+
   return <AppLayout><section className="space-y-6">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="text-2xl font-bold">Bolões</h1><p className="text-sm text-muted-foreground">Gerencie jogos, participantes, situação e concursos válidos.</p></div><Button onClick={() => setCreateOpen(true)}><Plus className="size-4" /> Novo bolão</Button></div>
     {isLoading ? <p>Carregando bolões...</p> : pools.length === 0 ? <Card><CardContent className="p-8 text-center text-muted-foreground">Nenhum bolão criado. Escolha um jogo da Biblioteca para começar.</CardContent></Card> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{pools.map((pool) => { const summary = participantSummaries.data?.find((item) => item.bettingPoolId === pool.id); return <Card key={pool.id}><CardHeader><div className="flex items-start justify-between gap-2"><div><CardTitle>{pool.name}</CardTitle><CardDescription>{pool.firstContestNumber ? `Concursos ${pool.firstContestNumber}${pool.lastContestNumber ? ` a ${pool.lastContestNumber}` : ''}` : 'Concursos ainda não definidos'}</CardDescription>{pool.totalAmount != null && <p className="mt-2 text-sm font-semibold">Total: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(pool.totalAmount)}{pool.sharePrice != null ? ` • Cota: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(pool.sharePrice)}` : ''}</p>}{summary && <div className="mt-2 text-sm"><p className="font-medium">{summary.count} participante(s)</p><p className="text-xs text-muted-foreground">{summary.names.length > 0 ? summary.names.join(', ') : 'Nenhum nome cadastrado'}</p></div>}</div><Badge variant={pool.status === 'active' ? 'default' : 'secondary'}>{labels[pool.status] ?? pool.status}</Badge></div></CardHeader><CardContent className="flex gap-2"><Button variant="outline" onClick={() => setSelectedPool(pool)}><Users className="size-4" /> Gerenciar</Button><Button render={<Link to={`/conferencia/boloes?pool=${pool.id}`} />}><CheckCircle2 className="size-4" /> Conferir</Button></CardContent></Card>})}</div>}
@@ -107,6 +122,7 @@ export function PoolsPage() {
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader><DialogTitle>{selectedPool?.name} — participantes e jogos</DialogTitle></DialogHeader>
         {selectedPool && <div className="space-y-6 py-2">
+          <Button type="button" className="w-full sm:w-auto" onClick={exportSelectedPoolPdf} disabled={poolParticipants.isLoading || poolGames.isLoading || !poolGames.data?.length}><Download className="size-4" /> Gerar lista em PDF</Button>
           <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-3">
             <div><p className="text-xs text-muted-foreground">Participantes</p><p className="text-xl font-bold">{poolParticipants.data?.length ?? 0}</p></div>
             <div><p className="text-xs text-muted-foreground">Total do bolão</p><p className="font-bold">{selectedPool.totalAmount == null ? 'Não informado' : PricingService.formatCurrency(selectedPool.totalAmount)}</p></div>
