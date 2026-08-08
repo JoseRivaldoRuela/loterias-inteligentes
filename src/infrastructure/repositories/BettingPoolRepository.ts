@@ -19,7 +19,7 @@ export type BettingPool = {
 export type PoolInvitation = { id: string; bettingPoolId: string; invitedEmail: string; role: 'manager' | 'member'; status: string; createdAt: string }
 export type PoolParticipant = { id: string; name: string; email: string | null; phone: string | null; shareCount: number; active: boolean }
 export type PoolParticipantInput = { name: string; email: string; phone: string; shareCount: number }
-export type CreateBettingPoolInput = { lotteryId: string; name: string; description?: string; status: 'draft' | 'active'; firstContestNumber: number | null; lastContestNumber: number | null; totalShares: number; gameSetId: string; participants: PoolParticipantInput[]; creatorParticipates: boolean }
+export type CreateBettingPoolInput = { lotteryId: string; name: string; description?: string; status: 'draft' | 'active'; firstContestNumber: number | null; lastContestNumber: number | null; totalShares: number; totalAmount: number; gameSetId: string; participants: PoolParticipantInput[]; creatorParticipates: boolean }
 
 async function sendInvitation(poolId: string, email: string): Promise<void> {
   const { data, error } = await supabase.functions.invoke('send-pool-invitation', {
@@ -77,7 +77,16 @@ export const BettingPoolRepository = {
     if (error || !data) {
       throw new Error(`Erro ao criar bolão: ${error?.message}`)
     }
-    const pool = mapPool(data as BettingPoolRow)
+    let pool = mapPool(data as BettingPoolRow)
+    const sharePrice = input.totalAmount / input.totalShares
+    const { data: pricedPool, error: priceError } = await supabase
+      .from('betting_pools')
+      .update({ total_amount: input.totalAmount, share_price: sharePrice })
+      .eq('id', pool.id)
+      .select('id, owner_id, lottery_id, name, description, status, total_shares, share_price, total_amount, first_contest_number, last_contest_number, rules, created_at')
+      .single()
+    if (priceError || !pricedPool) throw new Error(`Bolão criado, mas não foi possível gravar os valores: ${priceError?.message}`)
+    pool = mapPool(pricedPool as BettingPoolRow)
     const emails = [...new Set(input.participants.map((item) => item.email.trim().toLowerCase()).filter(Boolean))]
     const deliveries = await Promise.allSettled(emails.map((email) => sendInvitation(pool.id, email)))
     const failedDeliveries = deliveries.filter((delivery) => delivery.status === 'rejected')

@@ -40,6 +40,7 @@ import {
 } from '@/core/strategies/RandomStrategy'
 import { useLotteries } from '@/features/lotteries/hooks/useLotteries'
 import { CostSummary } from '@/features/pricing/components/CostSummary'
+import { TicketsCostSummary } from '@/features/pricing/components/TicketsCostSummary'
 import { useLibraries } from '@/features/libraries/hooks/useLibraries'
 import { useCreateLibrary } from '@/features/libraries/hooks/useLibraries'
 import { useSaveGeneratedGame } from '@/features/saved-games/hooks/useSaveGeneratedGame'
@@ -913,6 +914,10 @@ export function GeneratorPage({ mode = 'automatic' }: { mode?: GeneratorMode }) 
               </Card>
             )}
 
+            {mode === 'dark' && selectedLottery && suggestedTickets.length > 0 && (
+              <TicketsCostSummary lotteryId={selectedLottery.id} tickets={suggestedTickets.map((ticket) => ticket.numbers)} />
+            )}
+
             {mode === 'manual' && selectedLottery && (
               <Card>
                 <CardHeader>
@@ -1005,6 +1010,10 @@ export function GeneratorPage({ mode = 'automatic' }: { mode?: GeneratorMode }) 
                   ))}
                 </CardContent>
               </Card>
+            )}
+
+            {mode === 'manual' && selectedLottery && assembledTickets.length > 0 && (
+              <TicketsCostSummary lotteryId={selectedLottery.id} tickets={assembledTickets.map((ticket) => ticket.numbers)} />
             )}
 
             {mode === 'automatic' && <Card>
