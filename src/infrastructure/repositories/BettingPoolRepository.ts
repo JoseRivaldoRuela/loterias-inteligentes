@@ -19,6 +19,7 @@ export type BettingPool = {
 export type PoolInvitation = { id: string; bettingPoolId: string; invitedEmail: string; role: 'manager' | 'member'; status: string; createdAt: string }
 export type PoolParticipant = { id: string; name: string; email: string | null; phone: string | null; shareCount: number; active: boolean }
 export type PoolParticipantInput = { name: string; email: string; phone: string; shareCount: number }
+export type PoolParticipantSummary = { bettingPoolId: string; names: string[]; count: number }
 export type CreateBettingPoolInput = { lotteryId: string; name: string; description?: string; status: 'draft' | 'active'; firstContestNumber: number | null; lastContestNumber: number | null; totalShares: number; totalAmount: number; gameSetId: string; participants: PoolParticipantInput[]; creatorParticipates: boolean }
 
 async function sendInvitation(poolId: string, email: string): Promise<void> {
@@ -120,6 +121,23 @@ export const BettingPoolRepository = {
       shareCount: row.share_count,
       active: row.active,
     }))
+  },
+  async listParticipantSummaries(poolIds: string[]): Promise<PoolParticipantSummary[]> {
+    if (poolIds.length === 0) return []
+    const { data, error } = await supabase
+      .from('betting_pool_participants')
+      .select('betting_pool_id, name')
+      .in('betting_pool_id', poolIds)
+      .eq('active', true)
+      .order('name')
+    if (error) throw new Error(`Erro ao carregar participantes dos bolões: ${error.message}`)
+    const grouped = new Map<string, string[]>()
+    for (const row of data ?? []) {
+      const names = grouped.get(row.betting_pool_id) ?? []
+      names.push(row.name)
+      grouped.set(row.betting_pool_id, names)
+    }
+    return poolIds.map((bettingPoolId) => ({ bettingPoolId, names: grouped.get(bettingPoolId) ?? [], count: grouped.get(bettingPoolId)?.length ?? 0 }))
   },
   async invite(poolId: string, email: string): Promise<void> {
     await sendInvitation(poolId, email)

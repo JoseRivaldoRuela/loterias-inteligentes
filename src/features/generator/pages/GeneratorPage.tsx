@@ -67,6 +67,7 @@ export function GeneratorPage({ mode = 'automatic' }: { mode?: GeneratorMode }) 
   const {
     data: libraries = [],
   } = useLibraries()
+  const personalLibraries = useMemo(() => libraries.filter((library) => library.libraryType === 'personal'), [libraries])
 
   const [selectedLotteryId, setSelectedLotteryId] = useState('')
   const [ticketCount, setTicketCount] = useState(50)
@@ -104,10 +105,10 @@ export function GeneratorPage({ mode = 'automatic' }: { mode?: GeneratorMode }) 
   const [saveDestination, setSaveDestination] = useState<'library' | 'pool'>('library')
 
   useEffect(() => {
-    if (!saveLibraryId && libraries.length > 0) {
-      setSaveLibraryId(libraries[0].id)
+    if ((!saveLibraryId || !personalLibraries.some((library) => library.id === saveLibraryId)) && personalLibraries.length > 0) {
+      setSaveLibraryId(personalLibraries[0].id)
     }
-  }, [libraries, saveLibraryId])
+  }, [personalLibraries, saveLibraryId])
 
   const createLibrary = useCreateLibrary()
 
@@ -453,6 +454,11 @@ export function GeneratorPage({ mode = 'automatic' }: { mode?: GeneratorMode }) 
       return
     }
 
+    if (!saveLibraryId || !personalLibraries.some((library) => library.id === saveLibraryId)) {
+      setSaveError('Selecione ou crie uma biblioteca pessoal para salvar o jogo.')
+      return
+    }
+
     setSaveError('')
 
     try {
@@ -471,7 +477,7 @@ export function GeneratorPage({ mode = 'automatic' }: { mode?: GeneratorMode }) 
       setSaveModalOpen(false)
       setSaveName('')
       setSaveDescription('')
-      setSaveLibraryId(libraries[0]?.id ?? '')
+      setSaveLibraryId(personalLibraries[0]?.id ?? '')
       setContestFrom('')
       setContestTo('')
       setMessage('Jogo salvo com sucesso.')
@@ -1100,7 +1106,7 @@ export function GeneratorPage({ mode = 'automatic' }: { mode?: GeneratorMode }) 
                       className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
                       <option value="">Sem biblioteca</option>
-                      {libraries.map((library) => (
+                      {personalLibraries.map((library) => (
                         <option key={library.id} value={library.id}>
                           {library.name}
                         </option>
@@ -1259,11 +1265,36 @@ export function GeneratorPage({ mode = 'automatic' }: { mode?: GeneratorMode }) 
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="modalSaveLibrary">Biblioteca</Label>
-                    <select id="modalSaveLibrary" value={saveLibraryId} onChange={(event) => setSaveLibraryId(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-                      <option value="">Sem biblioteca</option>
-                      {libraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}
-                    </select>
+                    <div className="flex gap-2">
+                      <select id="modalSaveLibrary" value={saveLibraryId} onChange={(event) => setSaveLibraryId(event.target.value)} className="flex h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm">
+                        <option value="">Selecione uma biblioteca pessoal</option>
+                        {personalLibraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}
+                      </select>
+                      <Button type="button" variant="outline" size="icon" aria-label="Criar biblioteca pessoal" onClick={() => setShowCreateLibraryForm((current) => !current)}><Plus className="size-4" /></Button>
+                    </div>
+                    {personalLibraries.length === 0 && <p className="text-xs text-amber-700">Você ainda não possui uma biblioteca pessoal. Use o botão + para criar.</p>}
                   </div>
+                  {showCreateLibraryForm && (
+                    <div className="space-y-3 rounded-lg border p-3">
+                      <p className="text-sm font-semibold">Nova biblioteca pessoal</p>
+                      <Input value={createLibraryName} onChange={(event) => setCreateLibraryName(event.target.value)} placeholder="Ex.: Meus jogos" />
+                      <Input value={createLibraryDescription} onChange={(event) => setCreateLibraryDescription(event.target.value)} placeholder="Descrição (opcional)" />
+                      {createLibraryError && <p className="text-sm text-destructive">{createLibraryError}</p>}
+                      <Button type="button" size="sm" disabled={createLibrary.isPending || !createLibraryName.trim()} onClick={async () => {
+                        setCreateLibraryError('')
+                        try {
+                          const created = await createLibrary.mutateAsync({ name: createLibraryName, description: createLibraryDescription })
+                          setSaveLibraryId(created.id)
+                          setCreateLibraryName('')
+                          setCreateLibraryDescription('')
+                          setShowCreateLibraryForm(false)
+                        } catch (caught) {
+                          setCreateLibraryError(caught instanceof Error ? caught.message : 'Não foi possível criar a biblioteca.')
+                        }
+                      }}>{createLibrary.isPending ? 'Criando...' : 'Criar e selecionar'}</Button>
+                    </div>
+                  )}
+                  {selectedLottery && ticketsToUse.length > 0 && <TicketsCostSummary compact lotteryId={selectedLottery.id} tickets={ticketsToUse.map((ticket) => ticket.numbers)} />}
                   <div className="space-y-2">
                     <Label htmlFor="saveName">Nome do jogo</Label>
                     <Input

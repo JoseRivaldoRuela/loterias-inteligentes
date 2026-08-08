@@ -61,6 +61,7 @@ export function ClosuresPage() {
   const {
     data: libraries = [],
   } = useLibraries()
+  const personalLibraries = useMemo(() => libraries.filter((library) => library.libraryType === 'personal'), [libraries])
 
   const [selectedLotteryId, setSelectedLotteryId] = useState('')
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([])
@@ -85,10 +86,10 @@ export function ClosuresPage() {
   const saveClosure = useSaveClosure()
 
   useEffect(() => {
-    if (!saveLibraryId && libraries.length > 0) {
-      setSaveLibraryId(libraries[0].id)
+    if ((!saveLibraryId || !personalLibraries.some((library) => library.id === saveLibraryId)) && personalLibraries.length > 0) {
+      setSaveLibraryId(personalLibraries[0].id)
     }
-  }, [libraries, saveLibraryId])
+  }, [personalLibraries, saveLibraryId])
 
   const createLibrary = useCreateLibrary()
 
@@ -435,7 +436,7 @@ export function ClosuresPage() {
       setSaveModalOpen(false)
       setSaveName('')
       setSaveDescription('')
-      setSaveLibraryId(libraries[0]?.id ?? '')
+      setSaveLibraryId(personalLibraries[0]?.id ?? '')
       setContestFrom('')
       setContestTo('')
       setMessage('Jogo salvo com sucesso.')
@@ -795,7 +796,7 @@ export function ClosuresPage() {
                               className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                             >
                               <option value="">Sem biblioteca</option>
-                              {libraries.map((library) => (
+                              {personalLibraries.map((library) => (
                                 <option key={library.id} value={library.id}>
                                   {library.name}
                                 </option>
