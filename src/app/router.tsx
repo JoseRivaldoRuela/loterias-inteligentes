@@ -50,6 +50,8 @@ export function AppRouter() {
       <Route path="/loterias" element={<LotteriesPage />} />
       <Route path="/bibliotecas" element={<LibrariesPage />} />
       <Route path="/gerador" element={<GeneratorPage />} />
+      <Route path="/gerador/escuro" element={<GeneratorPage mode="dark" />} />
+      <Route path="/gerador/manual" element={<GeneratorPage mode="manual" />} />
       <Route path="/fechamentos" element={<ClosuresPage />} />
       <Route path="/salvos" element={<SavedGamesPage />} />
       <Route path="/boloes" element={<PoolsPage />} />

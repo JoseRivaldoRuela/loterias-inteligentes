@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router'
 import {
   ArrowDown,
   ArrowUp,
@@ -51,7 +52,10 @@ import {
   exportTicketsAsPdf,
 } from '@/lib/export'
 
-export function GeneratorPage() {
+export type GeneratorMode = 'automatic' | 'dark' | 'manual'
+
+export function GeneratorPage({ mode = 'automatic' }: { mode?: GeneratorMode }) {
+  const navigate = useNavigate()
   const {
     data: lotteries = [],
     isLoading,
@@ -96,6 +100,7 @@ export function GeneratorPage() {
   const [contestFrom, setContestFrom] = useState('')
   const [contestTo, setContestTo] = useState('')
   const [saveError, setSaveError] = useState('')
+  const [saveDestination, setSaveDestination] = useState<'library' | 'pool'>('library')
 
   useEffect(() => {
     if (!saveLibraryId && libraries.length > 0) {
@@ -371,7 +376,22 @@ export function GeneratorPage() {
     setMessage(`${statisticalSuggestion.games.length} sugestão(ões) estatística(s) adicionada(s) ao jogo.`)
   }
 
-  const ticketsToUse = assembledTickets.length > 0 ? assembledTickets : tickets
+  const suggestedTickets: GeneratedTicket[] = statisticalSuggestion?.games.map((numbers) => ({ numbers })) ?? []
+  const ticketsToUse = assembledTickets.length > 0
+    ? assembledTickets
+    : mode === 'dark' && suggestedTickets.length > 0
+      ? suggestedTickets
+      : tickets
+
+  function openSave(destination: 'library' | 'pool') {
+    setSaveDestination(destination)
+    setSaveError('')
+    if (!saveName.trim()) {
+      const suffix = mode === 'dark' ? 'no escuro' : mode === 'manual' ? 'manual' : 'gerado'
+      setSaveName(`${selectedLottery?.name ?? 'Jogo'} ${suffix}`)
+    }
+    setSaveModalOpen(true)
+  }
 
   function handleExportTickets(format: 'excel' | 'pdf') {
     if (ticketsToUse.length === 0 || !selectedLottery) {
@@ -435,7 +455,7 @@ export function GeneratorPage() {
     setSaveError('')
 
     try {
-      await saveGeneratedGame.mutateAsync({
+      const savedGame = await saveGeneratedGame.mutateAsync({
         lotteryId: selectedLottery.id,
         name: saveName.trim(),
         description: saveDescription.trim() || null,
@@ -455,6 +475,9 @@ export function GeneratorPage() {
       setContestTo('')
       setMessage('Jogo salvo com sucesso.')
       setAssembledTickets([])
+      if (saveDestination === 'pool') {
+        navigate(`/boloes?jogo=${savedGame.id}`)
+      }
     } catch (saveError) {
       setSaveError(
         saveError instanceof Error
@@ -478,10 +501,38 @@ export function GeneratorPage() {
           </h1>
 
           <p className="text-sm text-muted-foreground">
-            Escolha as dezenas, defina a sequência e acompanhe o custo
-            estimado.
+            Cada modalidade de criação está em uma tela separada para facilitar o uso no celular.
           </p>
         </div>
+
+        <nav className="grid gap-2 rounded-xl border bg-background p-2 sm:grid-cols-3" aria-label="Modalidades do gerador">
+          {[
+            { value: 'automatic', path: '/gerador', label: 'Gerador', description: 'Cartões automáticos com dezenas escolhidas.' },
+            { value: 'dark', path: '/gerador/escuro', label: 'Jogo no escuro', description: 'Sugestões baseadas nas estatísticas.' },
+            { value: 'manual', path: '/gerador/manual', label: 'Montagem manual', description: 'Cartões livres e com tamanhos alternados.' },
+          ].map((item) => (
+            <Button key={item.value} variant={mode === item.value ? 'default' : 'ghost'} className="h-auto justify-start px-4 py-3 text-left" render={<Link to={item.path} />}>
+              <span>
+                <span className="block font-semibold">{item.label}</span>
+                <span className={`block text-xs ${mode === item.value ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>{item.description}</span>
+              </span>
+            </Button>
+          ))}
+        </nav>
+
+        {mode !== 'automatic' && !isLoading && !isError && (
+          <Card>
+            <CardContent className="grid gap-3 p-4 sm:grid-cols-[minmax(0,320px)_1fr] sm:items-center">
+              <div className="space-y-2">
+                <Label htmlFor="modeLottery">Loteria</Label>
+                <select id="modeLottery" value={effectiveLotteryId} onChange={(event) => handleLotteryChange(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  {lotteries.map((lottery) => <option key={lottery.id} value={lottery.id}>{lottery.name}</option>)}
+                </select>
+              </div>
+              <p className="text-sm text-muted-foreground">As quantidades permitidas e as dezenas disponíveis mudam automaticamente conforme a loteria.</p>
+            </CardContent>
+          </Card>
+        )}
 
         {isLoading && (
           <Card>
@@ -507,7 +558,7 @@ export function GeneratorPage() {
 
         {!isLoading && !isError && (
           <>
-            <div className="grid gap-6 xl:grid-cols-[400px_1fr]">
+            {mode === 'automatic' && <div className="grid gap-6 xl:grid-cols-[400px_1fr]">
               <div className="space-y-6">
                 <Card>
                   <CardHeader>
@@ -785,9 +836,9 @@ export function GeneratorPage() {
                   </div>
                 </CardContent>
               </Card>
-            </div>
+            </div>}
 
-            {selectedLottery && (
+            {mode === 'dark' && selectedLottery && (
               <Card className="border-violet-500/40">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2"><BarChart3 className="size-5" /> Jogo no escuro</CardTitle>
@@ -832,7 +883,11 @@ export function GeneratorPage() {
                           <p className="font-semibold">Sugestão baseada em {statisticalSuggestion.drawCount} concursos</p>
                           <p className="text-xs text-muted-foreground">Concursos {statisticalSuggestion.firstContest} a {statisticalSuggestion.lastContest} • dados de {statisticalSuggestion.firstDrawDate} a {statisticalSuggestion.lastDrawDate}</p>
                         </div>
-                        <Button type="button" variant="secondary" onClick={addStatisticalSuggestion}><Plus className="size-4" /> Adicionar {statisticalSuggestion.games.length} jogo(s)</Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="outline" onClick={addStatisticalSuggestion}><Plus className="size-4" /> Adicionar à montagem</Button>
+                          <Button type="button" variant="secondary" onClick={() => openSave('library')}>Salvar na biblioteca</Button>
+                          <Button type="button" onClick={() => openSave('pool')}>Criar bolão</Button>
+                        </div>
                       </div>
                       <div className="space-y-3">
                         {statisticalSuggestion.games.map((game, gameIndex) => (
@@ -858,7 +913,7 @@ export function GeneratorPage() {
               </Card>
             )}
 
-            {selectedLottery && (
+            {mode === 'manual' && selectedLottery && (
               <Card>
                 <CardHeader>
                   <CardTitle>Montar cartão manualmente</CardTitle>
@@ -931,9 +986,11 @@ export function GeneratorPage() {
                           .sort((a, b) => a - b).map((size) => `${size} dezenas`).join(', ')}.
                       </CardDescription>
                     </div>
-                    <Button type="button" variant="outline" onClick={() => setAssembledTickets([])}>
-                      <Trash2 className="size-4" /> Limpar seleção
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="secondary" onClick={() => openSave('library')}>Salvar na biblioteca</Button>
+                      <Button type="button" onClick={() => openSave('pool')}>Criar bolão</Button>
+                      <Button type="button" variant="outline" onClick={() => setAssembledTickets([])}><Trash2 className="size-4" /> Limpar</Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
@@ -950,7 +1007,7 @@ export function GeneratorPage() {
               </Card>
             )}
 
-            <Card>
+            {mode === 'automatic' && <Card>
               <CardHeader>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -1007,7 +1064,7 @@ export function GeneratorPage() {
                       type="button"
                       variant="secondary"
                       disabled={ticketsToUse.length === 0}
-                      onClick={() => setSaveModalOpen(true)}
+                      onClick={() => openSave('library')}
                     >
                       Salvar
                     </Button>
@@ -1179,7 +1236,7 @@ export function GeneratorPage() {
                   </div>
                 )}
               </CardContent>
-            </Card>
+            </Card>}
 
             <Dialog open={saveModalOpen} onOpenChange={setSaveModalOpen}>
               <DialogContent>
@@ -1191,6 +1248,13 @@ export function GeneratorPage() {
                 </DialogHeader>
 
                 <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="modalSaveLibrary">Biblioteca</Label>
+                    <select id="modalSaveLibrary" value={saveLibraryId} onChange={(event) => setSaveLibraryId(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                      <option value="">Sem biblioteca</option>
+                      {libraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}
+                    </select>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="saveName">Nome do jogo</Label>
                     <Input
@@ -1267,7 +1331,7 @@ export function GeneratorPage() {
                     onClick={() => void handleSaveGeneratedGame()}
                     disabled={ticketsToUse.length === 0 || saveGeneratedGame.isPending}
                   >
-                    {saveGeneratedGame.isPending ? 'Salvando...' : 'Salvar'}
+                    {saveGeneratedGame.isPending ? 'Salvando...' : saveDestination === 'pool' ? 'Salvar e criar bolão' : 'Salvar na biblioteca'}
                   </Button>
                 </DialogFooter>
               </DialogContent>

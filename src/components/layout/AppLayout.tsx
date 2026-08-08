@@ -40,11 +40,15 @@ type AppLayoutProps = {
   children: ReactNode
 }
 
-const menuItems = [
+type MenuItem = { label: string; path: string; icon: typeof Gauge; child?: boolean }
+
+const menuItems: MenuItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: Gauge },
   { label: 'Loterias', path: '/loterias', icon: Trophy },
   { label: 'Bibliotecas', path: '/bibliotecas', icon: Folder },
   { label: 'Gerador', path: '/gerador', icon: Sparkles },
+  { label: 'Jogo no escuro', path: '/gerador/escuro', icon: BarChart3, child: true },
+  { label: 'Montagem manual', path: '/gerador/manual', icon: ListChecks, child: true },
   { label: 'Fechamentos', path: '/fechamentos', icon: ListChecks },
   { label: 'Jogos salvos', path: '/salvos', icon: Folder },
   { label: 'Bolões', path: '/boloes', icon: Users },
@@ -70,12 +74,13 @@ function SidebarContent() {
       <Separator className="bg-slate-800" />
 
       <nav className="flex-1 space-y-1 p-3">
-        {menuItems.map(({ label, path, icon: Icon }) => (
+        {menuItems.map(({ label, path, icon: Icon, child }) => (
           <NavLink
             key={path}
             to={path}
+            end={path === '/gerador'}
             className={({ isActive }) =>
-              `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+              `flex w-full items-center gap-3 rounded-lg py-2.5 text-left text-sm transition ${child ? 'pl-9 pr-3 text-xs' : 'px-3'} ${
                 isActive
                   ? 'bg-primary font-medium text-primary-foreground'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white'
