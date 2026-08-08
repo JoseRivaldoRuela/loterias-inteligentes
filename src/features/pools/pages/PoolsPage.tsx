@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { TicketsCostSummary } from '@/features/pricing/components/TicketsCostSummary'
 import { PricingService } from '@/features/pricing/services/PricingService'
+import { SavedGameService } from '@/features/closures/services/SavedGameService'
 import { useSavedGameSets } from '@/features/saved-games/hooks/useSavedGameSets'
 import { useSavedGameTickets } from '@/features/saved-games/hooks/useSavedGameTickets'
 import { BettingPoolRepository, type BettingPool } from '@/infrastructure/repositories/BettingPoolRepository'
@@ -45,6 +46,14 @@ export function PoolsPage() {
   const { data: gameTickets = [] } = useSavedGameTickets(gameId)
   const invitations = useQuery({ queryKey: ['pool-invitations', selectedPool?.id], queryFn: () => BettingPoolRepository.listInvitations(selectedPool!.id), enabled: Boolean(selectedPool) })
   const poolParticipants = useQuery({ queryKey: ['pool-participants', selectedPool?.id], queryFn: () => BettingPoolRepository.listParticipants(selectedPool!.id), enabled: Boolean(selectedPool) })
+  const poolGames = useQuery({
+    queryKey: ['pool-games-with-tickets', selectedPool?.id],
+    enabled: Boolean(selectedPool),
+    queryFn: async () => {
+      const sets = await SavedGameService.listSavedGameSetsByPool(selectedPool!.id)
+      return Promise.all(sets.map(async (set) => ({ set, tickets: await SavedGameService.getSavedGameTickets(set.id) })))
+    },
+  })
   const create = useMutation({ mutationFn: BettingPoolRepository.createWithGame, onSuccess: async () => { await client.invalidateQueries({ queryKey: ['betting-pools'] }); await client.invalidateQueries({ queryKey: ['saved-game-sets'] }) } })
   const changeStatus = useMutation({ mutationFn: ({ id, value }: { id: string; value: string }) => BettingPoolRepository.updateStatus(id, value), onSuccess: async () => client.invalidateQueries({ queryKey: ['betting-pools'] }) })
   const invite = useMutation({
@@ -94,6 +103,35 @@ export function PoolsPage() {
       <label className="flex items-start gap-3 rounded-md border p-3"><input className="mt-1" type="checkbox" checked={creatorParticipates} onChange={(e) => setCreatorParticipates(e.target.checked)} /><span><span className="block text-sm font-medium">Também vou participar deste bolão</span><span className="block text-xs text-muted-foreground">Usaremos os dados da sua conta e será atribuída 1 cota. Desmarcado, você apenas administra.</span></span></label>
     </div><DialogFooter className="shrink-0 border-t bg-background pt-4"><Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button onClick={() => void submit()} disabled={create.isPending}>{create.isPending ? 'Criando...' : 'Criar bolão'}</Button></DialogFooter></DialogContent></Dialog>
 
-    <Dialog open={Boolean(selectedPool)} onOpenChange={(open) => { if (!open) setSelectedPool(null) }}><DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{selectedPool?.name}</DialogTitle></DialogHeader>{selectedPool && <div className="space-y-5 py-2"><div className="space-y-2"><Label>Situação</Label><select className="flex h-10 w-full rounded-md border bg-background px-3 text-sm" value={selectedPool.status} onChange={(e) => { void changeStatus.mutateAsync({ id: selectedPool.id, value: e.target.value }); setSelectedPool({ ...selectedPool, status: e.target.value }) }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div><div><Label>Participantes e cotas</Label><div className="mt-2 space-y-2">{poolParticipants.data?.map((item) => <div key={item.id} className="rounded-md border p-3 text-sm"><div className="flex items-center justify-between gap-3"><span className="font-medium">{item.name}</span><Badge>{item.shareCount} {item.shareCount === 1 ? 'cota' : 'cotas'}</Badge></div>{(item.email || item.phone) && <p className="mt-1 text-xs text-muted-foreground">{[item.email, item.phone].filter(Boolean).join(' • ')}</p>}</div>)}{poolParticipants.isLoading && <p className="text-sm text-muted-foreground">Carregando participantes...</p>}{!poolParticipants.isLoading && !poolParticipants.data?.length && <p className="text-sm text-muted-foreground">Nenhum participante cadastrado.</p>}</div></div><div><Label>Convites de acesso</Label><div className="mt-2 space-y-2">{invitations.data?.map((item) => <div key={item.id} className="flex justify-between rounded-md border p-2 text-sm"><span>{item.invitedEmail}</span><Badge variant="secondary">{item.status === 'pending' ? 'Convidado' : item.status}</Badge></div>)}{!invitations.isLoading && !invitations.data?.length && <p className="text-sm text-muted-foreground">Nenhum convite enviado.</p>}</div><div className="mt-3 flex gap-2"><Input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="email@exemplo.com" /><Button onClick={() => void invite.mutateAsync({ id: selectedPool.id, email: inviteEmail })} disabled={!inviteEmail || invite.isPending}>Convidar</Button></div></div><Button className="w-full" render={<Link to={`/conferencia/boloes?pool=${selectedPool.id}`} />}>Abrir conferência</Button></div>}</DialogContent></Dialog>
+    <Dialog open={Boolean(selectedPool)} onOpenChange={(open) => { if (!open) setSelectedPool(null) }}>
+      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+        <DialogHeader><DialogTitle>{selectedPool?.name} — participantes e jogos</DialogTitle></DialogHeader>
+        {selectedPool && <div className="space-y-6 py-2">
+          <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-3">
+            <div><p className="text-xs text-muted-foreground">Participantes</p><p className="text-xl font-bold">{poolParticipants.data?.length ?? 0}</p></div>
+            <div><p className="text-xs text-muted-foreground">Total do bolão</p><p className="font-bold">{selectedPool.totalAmount == null ? 'Não informado' : PricingService.formatCurrency(selectedPool.totalAmount)}</p></div>
+            <div><p className="text-xs text-muted-foreground">Valor por cota</p><p className="font-bold">{selectedPool.sharePrice == null ? 'Não informado' : PricingService.formatCurrency(selectedPool.sharePrice)}</p></div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between"><h3 className="font-semibold">Lista de participantes</h3><Badge variant="secondary">{poolParticipants.data?.length ?? 0} pessoa(s)</Badge></div>
+            {poolParticipants.isLoading && <p className="text-sm text-muted-foreground">Carregando participantes...</p>}
+            {poolParticipants.data?.map((item, index) => <div key={item.id} className="rounded-lg border p-3 text-sm"><div className="flex items-center justify-between gap-3"><span className="font-medium">{index + 1}. {item.name}</span><Badge>{item.shareCount} {item.shareCount === 1 ? 'cota' : 'cotas'}</Badge></div>{(item.email || item.phone) && <p className="mt-1 text-xs text-muted-foreground">{[item.email, item.phone].filter(Boolean).join(' • ')}</p>}</div>)}
+            {!poolParticipants.isLoading && !poolParticipants.data?.length && <p className="rounded-lg border p-3 text-sm text-muted-foreground">Nenhum participante cadastrado.</p>}
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between"><h3 className="font-semibold">Jogos e dezenas</h3><Badge variant="secondary">{poolGames.data?.reduce((sum, group) => sum + group.tickets.length, 0) ?? 0} cartão(ões)</Badge></div>
+            {poolGames.isLoading && <p className="text-sm text-muted-foreground">Carregando os jogos...</p>}
+            {poolGames.data?.map(({ set, tickets }) => <div key={set.id} className="space-y-2 rounded-xl border p-4"><div><p className="font-medium">{set.name}</p><p className="text-xs text-muted-foreground">{tickets.length} cartão(ões)</p></div>{tickets.map((ticket, index) => <div key={ticket.id} className="rounded-lg bg-muted/40 p-3"><p className="mb-2 text-xs font-medium">Cartão {index + 1} • {ticket.numbers.length} dezenas</p><div className="flex flex-wrap gap-2">{ticket.numbers.map((number) => <span key={number} className="flex size-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{String(number).padStart(2, '0')}</span>)}</div></div>)}</div>)}
+            {!poolGames.isLoading && !poolGames.data?.length && <p className="rounded-lg border p-3 text-sm text-muted-foreground">Nenhum jogo vinculado ao bolão.</p>}
+          </div>
+
+          <div className="space-y-2"><Label>Situação</Label><select className="flex h-10 w-full rounded-md border bg-background px-3 text-sm" value={selectedPool.status} onChange={(e) => { void changeStatus.mutateAsync({ id: selectedPool.id, value: e.target.value }); setSelectedPool({ ...selectedPool, status: e.target.value }) }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+          <div><Label>Convites de acesso</Label><div className="mt-2 space-y-2">{invitations.data?.map((item) => <div key={item.id} className="flex justify-between rounded-md border p-2 text-sm"><span>{item.invitedEmail}</span><Badge variant="secondary">{item.status === 'pending' ? 'Convidado' : item.status}</Badge></div>)}</div><div className="mt-3 flex gap-2"><Input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="email@exemplo.com" /><Button onClick={() => void invite.mutateAsync({ id: selectedPool.id, email: inviteEmail })} disabled={!inviteEmail || invite.isPending}>Convidar</Button></div></div>
+          <Button className="w-full" render={<Link to={`/conferencia/boloes?pool=${selectedPool.id}`} />}>Abrir conferência</Button>
+        </div>}
+      </DialogContent>
+    </Dialog>
   </section></AppLayout>
 }
