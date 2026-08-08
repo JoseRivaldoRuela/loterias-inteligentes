@@ -11,12 +11,15 @@ import {
   LogOut,
   Menu,
   Settings,
+  Search,
   Sparkles,
   Trophy,
+  Users,
   User,
 } from 'lucide-react'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -42,7 +45,11 @@ const menuItems = [
   { label: 'Loterias', path: '/loterias', icon: Trophy },
   { label: 'Bibliotecas', path: '/bibliotecas', icon: Folder },
   { label: 'Gerador', path: '/gerador', icon: Sparkles },
-  { label: 'Conferência', path: '/conferencia', icon: CheckCircle2 },
+  { label: 'Fechamentos', path: '/fechamentos', icon: ListChecks },
+  { label: 'Jogos salvos', path: '/salvos', icon: Folder },
+  { label: 'Bolões', path: '/boloes', icon: Users },
+  { label: 'Conferência', path: '/conferencia/boloes', icon: CheckCircle2 },
+  { label: 'Resultados', path: '/resultados', icon: Search },
   { label: 'Estatísticas', path: '/estatisticas', icon: BarChart3 },
   { label: 'Simulações', path: '/simulacoes', icon: ListChecks },
   { label: 'Laboratório', path: '/laboratorio', icon: BrainCircuit },
@@ -102,6 +109,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const email = user?.email ?? 'Usuário'
   const initials = email.slice(0, 2).toUpperCase()
   const accountType = isSubscriber ? 'Assinante' : 'Usuário gratuito'
+  const accountVariant = isSubscriber ? 'default' : 'secondary'
 
   return (
     <div className="min-h-screen bg-muted/40">
@@ -174,9 +182,11 @@ export function AppLayout({ children }: AppLayoutProps) {
                       {email}
                     </p>
 
-                    <p className="text-xs text-muted-foreground">
-                      {accountType}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={accountVariant}>
+                        {accountType}
+                      </Badge>
+                    </div>
                   </div>
 
                   <ChevronDown className="size-4 text-muted-foreground" />
@@ -191,9 +201,11 @@ export function AppLayout({ children }: AppLayoutProps) {
                         {email}
                       </p>
 
-                      <p className="text-xs text-muted-foreground">
-                        {accountType}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <Badge variant={accountVariant}>
+                          {accountType}
+                        </Badge>
+                      </div>
                     </div>
                   </DropdownMenuItem>
 

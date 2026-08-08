@@ -6,7 +6,9 @@ import {
   Lock,
   Plus,
   RefreshCw,
+  Users,
 } from 'lucide-react'
+import { useNavigate } from 'react-router'
 
 import { AppLayout } from '@/components/layout/AppLayout'
 import { Button } from '@/components/ui/button'
@@ -20,7 +22,10 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { SubscriberGate } from '@/features/auth/components/SubscriberGate'
+import { useAuth } from '@/features/auth/context/AuthContext'
+import { useSavedGameSets } from '@/features/saved-games/hooks/useSavedGameSets'
+import { useSavedGameSetsByLibrary } from '@/features/saved-games/hooks/useSavedGameSetsByLibrary'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import {
   useCreateLibrary,
   useLibraries,
@@ -28,8 +33,6 @@ import {
 
 export function LibrariesPage() {
   const [showForm, setShowForm] = useState(false)
-  const [showSubscriberMessage, setShowSubscriberMessage] =
-    useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [formError, setFormError] = useState('')
@@ -42,6 +45,17 @@ export function LibrariesPage() {
     refetch,
     isFetching,
   } = useLibraries()
+
+  const { isSubscriber } = useAuth()
+
+  const {
+    data: savedSets = [],
+    isLoading: savedSetsLoading,
+    isError: savedSetsError,
+  } = useSavedGameSets()
+
+  const [openLibraryId, setOpenLibraryId] = useState<string | null>(null)
+  const savedSetsByLibrary = useSavedGameSetsByLibrary(openLibraryId)
 
   const createLibrary = useCreateLibrary()
 
@@ -66,14 +80,14 @@ export function LibrariesPage() {
     }
   }
 
+  const navigate = useNavigate()
+
   function handleOpenForm() {
-    setShowSubscriberMessage(false)
     setShowForm(true)
   }
 
-  function handleBlockedAccess() {
-    setShowForm(false)
-    setShowSubscriberMessage(true)
+  function handleViewSavedGames() {
+    navigate('/salvos')
   }
 
   function handleCancel() {
@@ -113,42 +127,101 @@ export function LibrariesPage() {
               Atualizar
             </Button>
 
-            <SubscriberGate
-              fallback={
-                <Button
-                  type="button"
-                  onClick={handleBlockedAccess}
-                >
-                  <Lock className="size-4" />
-                  Nova biblioteca
-                </Button>
+            <Button
+              type="button"
+              onClick={handleOpenForm}
+              disabled={!isSubscriber || showForm}
+              title={
+                !isSubscriber
+                  ? 'Recurso disponível apenas para assinantes'
+                  : undefined
               }
             >
-              <Button
-                type="button"
-                onClick={handleOpenForm}
-                disabled={showForm}
-              >
-                <Plus className="size-4" />
-                Nova biblioteca
-              </Button>
-            </SubscriberGate>
+              <Lock className="size-4" />
+              Nova biblioteca
+            </Button>
           </div>
         </div>
 
-        {showSubscriberMessage && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Jogos salvos</CardTitle>
+
+            <CardDescription>
+              Acesse jogos já gravados na plataforma.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            {savedSetsLoading ? (
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+                Carregando jogos salvos...
+              </div>
+            ) : savedSetsError ? (
+              <p className="text-sm text-destructive">
+                Não foi possível carregar os jogos salvos.
+              </p>
+            ) : savedSets.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nenhum jogo salvo encontrado. Você pode salvar jogos
+                gerados ou fechamentos e visualizá-los aqui.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {savedSets.slice(0, 4).map((set) => (
+                    <Card key={set.id}>
+                      <CardContent>
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-semibold">
+                              {set.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {set.sourceType === 'closure'
+                                ? 'Fechamento'
+                                : 'Gerador'}
+                            </p>
+                          </div>
+                          <Folder className="size-5 text-muted-foreground" />
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {set.ticketCount} cartão(ões)
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleViewSavedGames}
+                  >
+                    Ver todos os jogos salvos
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {!isSubscriber && (
           <Card className="border-amber-500/50 bg-amber-500/5">
             <CardContent className="flex items-start gap-3 p-4">
               <Lock className="mt-0.5 size-5 text-amber-600" />
 
               <div>
                 <p className="font-medium">
-                  Funcionalidade exclusiva para assinantes
+                  Recurso disponível apenas para assinantes
                 </p>
 
                 <p className="mt-1 text-sm text-muted-foreground">
-                  A criação de bibliotecas e o salvamento de jogos
-                  estão disponíveis apenas para usuários assinantes.
+                  Criar biblioteca e mover jogos para ela são ações
+                  reservadas a assinantes. Faça upgrade para usar
+                  esta funcionalidade.
                 </p>
               </div>
             </CardContent>
@@ -282,7 +355,7 @@ export function LibrariesPage() {
           libraries.length > 0 && (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {libraries.map((library) => (
-                <Card key={library.id}>
+                <Card key={library.id} onClick={() => setOpenLibraryId(library.id)} className="cursor-pointer">
                   <CardHeader>
                     <div className="flex items-start gap-3">
                       <Folder className="mt-1 size-5 text-muted-foreground" />
@@ -310,6 +383,62 @@ export function LibrariesPage() {
               ))}
             </div>
           )}
+        {openLibraryId && (
+          <Dialog open={!!openLibraryId} onOpenChange={(open) => { if (!open) setOpenLibraryId(null) }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Jogos na biblioteca</DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                {savedSetsByLibrary.isLoading ? (
+                  <p>Carregando jogos...</p>
+                ) : savedSetsByLibrary.isError ? (
+                  <p className="text-sm text-destructive">Não foi possível carregar os jogos desta biblioteca.</p>
+                ) : (savedSetsByLibrary.data?.length ?? 0) === 0 ? (
+                  <p>Nenhum jogo salvo nesta biblioteca.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {(savedSetsByLibrary.data ?? []).map((set) => (
+                      <Card key={set.id}>
+                        <CardContent>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="font-semibold">{set.name}</p>
+                              <p className="text-xs text-muted-foreground">{set.sourceType === 'closure' ? 'Fechamento' : 'Gerador'}</p>
+                            </div>
+                            <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">{set.ticketCount} cartões</span><Button type="button" size="sm" variant="outline" disabled={Boolean(set.bettingPoolId)} onClick={() => { setOpenLibraryId(null); navigate(`/boloes?jogo=${set.id}`) }}><Users className="size-4" />{set.bettingPoolId ? 'No bolão' : 'Adicionar ao bolão'}</Button></div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <div className="flex justify-between w-full">
+                  <div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setOpenLibraryId(null)
+                        navigate(`/salvos?libraryId=${openLibraryId}`)
+                      }}
+                    >
+                      Ver no Gerenciador de jogos
+                    </Button>
+                  </div>
+
+                  <div>
+                    <Button type="button" onClick={() => setOpenLibraryId(null)}>Fechar</Button>
+                  </div>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </section>
     </AppLayout>
   )

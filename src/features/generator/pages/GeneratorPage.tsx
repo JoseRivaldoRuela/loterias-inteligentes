@@ -3,9 +3,11 @@ import {
   ArrowDown,
   ArrowUp,
   Copy,
+  Download,
   RefreshCw,
   Sparkles,
   Trash2,
+  Plus,
 } from 'lucide-react'
 
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -18,6 +20,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LotteryFactory } from '@/core/lottery/LotteryFactory'
@@ -28,6 +38,13 @@ import {
 } from '@/core/strategies/RandomStrategy'
 import { useLotteries } from '@/features/lotteries/hooks/useLotteries'
 import { CostSummary } from '@/features/pricing/components/CostSummary'
+import { useLibraries } from '@/features/libraries/hooks/useLibraries'
+import { useCreateLibrary } from '@/features/libraries/hooks/useLibraries'
+import { useSaveGeneratedGame } from '@/features/saved-games/hooks/useSaveGeneratedGame'
+import {
+  exportTicketsAsExcel,
+  exportTicketsAsPdf,
+} from '@/lib/export'
 
 export function GeneratorPage() {
   const {
@@ -37,12 +54,41 @@ export function GeneratorPage() {
     error: lotteriesError,
   } = useLotteries()
 
+  const {
+    data: libraries = [],
+  } = useLibraries()
+
   const [selectedLotteryId, setSelectedLotteryId] = useState('')
   const [ticketCount, setTicketCount] = useState(50)
   const [numbersPerTicket, setNumbersPerTicket] = useState(15)
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([])
   const [tickets, setTickets] = useState<GeneratedTicket[]>([])
+  const [selectedTicketIndexes, setSelectedTicketIndexes] = useState<number[]>([])
+  const [assembledTickets, setAssembledTickets] = useState<GeneratedTicket[]>([])
+  const [manualTicketSize, setManualTicketSize] = useState(15)
+  const [manualTicketNumbers, setManualTicketNumbers] = useState<number[]>([])
   const [message, setMessage] = useState('')
+  const [saveModalOpen, setSaveModalOpen] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [saveDescription, setSaveDescription] = useState('')
+  const [saveLibraryId, setSaveLibraryId] = useState('')
+  const [showCreateLibraryForm, setShowCreateLibraryForm] = useState(false)
+  const [createLibraryName, setCreateLibraryName] = useState('')
+  const [createLibraryDescription, setCreateLibraryDescription] = useState('')
+  const [createLibraryError, setCreateLibraryError] = useState('')
+  const [contestFrom, setContestFrom] = useState('')
+  const [contestTo, setContestTo] = useState('')
+  const [saveError, setSaveError] = useState('')
+
+  useEffect(() => {
+    if (!saveLibraryId && libraries.length > 0) {
+      setSaveLibraryId(libraries[0].id)
+    }
+  }, [libraries, saveLibraryId])
+
+  const createLibrary = useCreateLibrary()
+
+  const saveGeneratedGame = useSaveGeneratedGame()
 
   const effectiveLotteryId =
     selectedLotteryId || lotteries.at(0)?.id || ''
@@ -72,6 +118,8 @@ export function GeneratorPage() {
 
     setSelectedLotteryId(selectedLottery.id)
     setNumbersPerTicket(selectedLottery.minimumBet)
+    setManualTicketSize(selectedLottery.minimumBet)
+    setManualTicketNumbers([])
     setSelectedNumbers(availableNumbers)
     setTickets([])
     setMessage('')
@@ -79,12 +127,15 @@ export function GeneratorPage() {
 
   function clearGeneratedTickets() {
     setTickets([])
+    setSelectedTicketIndexes([])
     setMessage('')
   }
 
   function handleLotteryChange(lotteryId: string) {
     setSelectedLotteryId(lotteryId)
     clearGeneratedTickets()
+    setAssembledTickets([])
+    setManualTicketNumbers([])
   }
 
   function handleTicketCountChange(value: number) {
@@ -193,6 +244,7 @@ export function GeneratorPage() {
       })
 
       setTickets(generatedTickets)
+      setSelectedTicketIndexes([])
 
       setMessage(
         `${generatedTickets.length} cartões gerados com ` +
@@ -209,12 +261,87 @@ export function GeneratorPage() {
     }
   }
 
-  async function handleCopyTickets() {
-    if (tickets.length === 0) {
+  function toggleGeneratedTicket(index: number) {
+    setSelectedTicketIndexes((current) =>
+      current.includes(index) ? current.filter((item) => item !== index) : [...current, index],
+    )
+  }
+
+  function addSelectedTickets() {
+    const selected = tickets.filter((_, index) => selectedTicketIndexes.includes(index))
+    if (selected.length === 0) return
+    setAssembledTickets((current) => {
+      const known = new Set(current.map((ticket) => [...ticket.numbers].sort((a, b) => a - b).join('-')))
+      return [...current, ...selected.filter((ticket) => {
+        const key = [...ticket.numbers].sort((a, b) => a - b).join('-')
+        if (known.has(key)) return false
+        known.add(key)
+        return true
+      })]
+    })
+    setSelectedTicketIndexes([])
+    setMessage(`${selected.length} cartão(ões) adicionado(s) ao jogo alternado.`)
+  }
+
+  function toggleManualNumber(number: number) {
+    setManualTicketNumbers((current) => {
+      if (current.includes(number)) return current.filter((item) => item !== number)
+      if (current.length >= manualTicketSize) return current
+      return [...current, number]
+    })
+  }
+
+  function addManualTicket() {
+    if (!selectedLottery || manualTicketSize < selectedLottery.minimumBet || manualTicketSize > selectedLottery.maximumBet) {
+      setMessage(`Informe uma quantidade entre ${selectedLottery?.minimumBet ?? 1} e ${selectedLottery?.maximumBet ?? 1} dezenas.`)
+      return
+    }
+    if (manualTicketNumbers.length !== manualTicketSize) {
+      setMessage(`Escolha exatamente ${manualTicketSize} dezenas para este cartão.`)
+      return
+    }
+    const canonicalKey = [...manualTicketNumbers].sort((a, b) => a - b).join('-')
+    const duplicate = assembledTickets.some(
+      (ticket) => [...ticket.numbers].sort((a, b) => a - b).join('-') === canonicalKey,
+    )
+    if (duplicate) {
+      setMessage('Este cartão já foi adicionado ao jogo.')
+      return
+    }
+    setAssembledTickets((current) => [...current, { numbers: [...manualTicketNumbers].sort((a, b) => a - b) }])
+    setManualTicketNumbers([])
+    setMessage(`Cartão manual de ${manualTicketSize} dezenas adicionado.`)
+  }
+
+  const ticketsToUse = assembledTickets.length > 0 ? assembledTickets : tickets
+
+  function handleExportTickets(format: 'excel' | 'pdf') {
+    if (ticketsToUse.length === 0 || !selectedLottery) {
       return
     }
 
-    const content = tickets
+    const fileName = `gerador_${selectedLottery.name}_${new Date()
+      .toISOString()
+      .slice(0, 10)}`
+    const title = `Jogo gerado - ${selectedLottery.name}`
+    const description = `Sequência: ${selectedNumbers
+      .map((number) => String(number).padStart(2, '0'))
+      .join(', ')}`
+    const data = ticketsToUse.map((ticket) => ticket.numbers)
+
+    if (format === 'excel') {
+      exportTicketsAsExcel(fileName, title, description, data)
+    } else {
+      exportTicketsAsPdf(fileName, title, description, data)
+    }
+  }
+
+  async function handleCopyTickets() {
+    if (ticketsToUse.length === 0) {
+      return
+    }
+
+    const content = ticketsToUse
       .map(
         (ticket, index) =>
           `${String(index + 1).padStart(3, '0')}: ${ticket.numbers
@@ -228,6 +355,54 @@ export function GeneratorPage() {
       setMessage('Cartões copiados para a área de transferência.')
     } catch {
       setMessage('Não foi possível copiar os cartões.')
+    }
+  }
+
+  async function handleSaveGeneratedGame(): Promise<void> {
+    if (!selectedLottery) {
+      setSaveError('Selecione uma loteria para salvar o jogo.')
+      return
+    }
+
+    if (ticketsToUse.length === 0) {
+      setSaveError('Gere os cartões antes de salvar o jogo.')
+      return
+    }
+
+    if (!saveName.trim()) {
+      setSaveError('Informe um nome para o jogo salvo.')
+      return
+    }
+
+    setSaveError('')
+
+    try {
+      await saveGeneratedGame.mutateAsync({
+        lotteryId: selectedLottery.id,
+        name: saveName.trim(),
+        description: saveDescription.trim() || null,
+        selectedNumbers: [...new Set(ticketsToUse.flatMap((ticket) => ticket.numbers))].sort((a, b) => a - b),
+        ticketSize: Math.min(...ticketsToUse.map((ticket) => ticket.numbers.length)),
+        tickets: ticketsToUse.map((ticket) => ticket.numbers),
+        libraryId: saveLibraryId || null,
+        contestFrom: contestFrom.trim() || null,
+        contestTo: contestTo.trim() || null,
+      })
+
+      setSaveModalOpen(false)
+      setSaveName('')
+      setSaveDescription('')
+      setSaveLibraryId(libraries[0]?.id ?? '')
+      setContestFrom('')
+      setContestTo('')
+      setMessage('Jogo salvo com sucesso.')
+      setAssembledTickets([])
+    } catch (saveError) {
+      setSaveError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Não foi possível salvar o jogo.',
+      )
     }
   }
 
@@ -554,6 +729,98 @@ export function GeneratorPage() {
               </Card>
             </div>
 
+            {selectedLottery && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Montar cartão manualmente</CardTitle>
+                  <CardDescription>
+                    Defina o tamanho e escolha livremente as dezenas de cada cartão. Depois, repita para montar o jogo alternado.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid gap-3 sm:grid-cols-[220px_1fr] sm:items-end">
+                    <div className="space-y-2">
+                      <Label htmlFor="manualTicketSize">Dezenas neste cartão</Label>
+                      <Input
+                        id="manualTicketSize"
+                        type="number"
+                        min={selectedLottery.minimumBet}
+                        max={selectedLottery.maximumBet}
+                        value={manualTicketSize}
+                        onChange={(event) => {
+                          const nextSize = Number(event.target.value)
+                          setManualTicketSize(nextSize)
+                          setManualTicketNumbers((current) => current.slice(0, Math.max(0, nextSize)))
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2 sm:justify-end">
+                      <Badge variant="secondary">{manualTicketNumbers.length} de {manualTicketSize} escolhidas</Badge>
+                      <Button type="button" variant="outline" onClick={() => setManualTicketNumbers([])}>Limpar</Button>
+                      <Button
+                        type="button"
+                        disabled={manualTicketNumbers.length !== manualTicketSize || manualTicketSize < selectedLottery.minimumBet || manualTicketSize > selectedLottery.maximumBet}
+                        onClick={addManualTicket}
+                      >
+                        <Plus className="size-4" /> Adicionar este cartão
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {availableNumbers.map((number) => {
+                      const selected = manualTicketNumbers.includes(number)
+                      return (
+                        <button
+                          key={`manual-${number}`}
+                          type="button"
+                          onClick={() => toggleManualNumber(number)}
+                          className={`flex size-12 items-center justify-center rounded-full border text-sm font-semibold transition ${
+                            selected
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-input bg-background hover:bg-muted'
+                          }`}
+                        >
+                          {String(number).padStart(2, '0')}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {assembledTickets.length > 0 && (
+              <Card className="border-primary/40">
+                <CardHeader>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <CardTitle>Jogo alternado</CardTitle>
+                      <CardDescription>
+                        {assembledTickets.length} cartão(ões) selecionado(s):{' '}
+                        {[...new Set(assembledTickets.map((ticket) => ticket.numbers.length))]
+                          .sort((a, b) => a - b).map((size) => `${size} dezenas`).join(', ')}.
+                      </CardDescription>
+                    </div>
+                    <Button type="button" variant="outline" onClick={() => setAssembledTickets([])}>
+                      <Trash2 className="size-4" /> Limpar seleção
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {assembledTickets.map((ticket, index) => (
+                    <div key={`${index}-${ticket.numbers.join('-')}`} className="flex items-center gap-3 rounded-lg border p-3">
+                      <Badge variant="secondary">{ticket.numbers.length} dezenas</Badge>
+                      <span className="min-w-0 flex-1 text-sm">{ticket.numbers.map((number) => String(number).padStart(2, '0')).join(' - ')}</span>
+                      <Button type="button" size="icon" variant="ghost" aria-label="Remover cartão" onClick={() => setAssembledTickets((current) => current.filter((_, position) => position !== index))}>
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -567,27 +834,185 @@ export function GeneratorPage() {
                     </CardDescription>
                   </div>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={tickets.length === 0}
-                    onClick={() => void handleCopyTickets()}
-                  >
-                    <Copy className="size-4" />
-                    Copiar
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      disabled={selectedTicketIndexes.length === 0}
+                      onClick={addSelectedTickets}
+                    >
+                      <Plus className="size-4" />
+                      Adicionar ao jogo ({selectedTicketIndexes.length})
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={ticketsToUse.length === 0}
+                      onClick={() => void handleCopyTickets()}
+                    >
+                      <Copy className="size-4" />
+                      Copiar
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={ticketsToUse.length === 0}
+                      onClick={() => void handleExportTickets('excel')}
+                    >
+                      <Download className="size-4" />
+                      Excel
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={ticketsToUse.length === 0}
+                      onClick={() => void handleExportTickets('pdf')}
+                    >
+                      <Download className="size-4" />
+                      PDF
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={ticketsToUse.length === 0}
+                      onClick={() => setSaveModalOpen(true)}
+                    >
+                      Salvar
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-input bg-background p-4">
+                  <p className="text-sm font-semibold">
+                    Salvar na biblioteca
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Selecione a biblioteca onde este jogo deve ser gravado.
+                  </p>
+
+                  <div className="mt-3">
+                    <Label htmlFor="saveLibrary">Biblioteca</Label>
+                    <div className="flex items-center gap-2">
+                      <select
+                      id="saveLibrary"
+                      value={saveLibraryId}
+                      onChange={(event) =>
+                        setSaveLibraryId(event.target.value)
+                      }
+                      className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Sem biblioteca</option>
+                      {libraries.map((library) => (
+                        <option key={library.id} value={library.id}>
+                          {library.name}
+                        </option>
+                      ))}
+                    </select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setShowCreateLibraryForm(true)}
+                        title="Criar nova biblioteca"
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {showCreateLibraryForm && (
+                    <Card className="mt-3">
+                      <CardHeader>
+                        <CardTitle>Nova biblioteca</CardTitle>
+                        <CardDescription>
+                          Crie uma biblioteca para organizar seus jogos.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="new-library-name">Nome</Label>
+                          <Input
+                            id="new-library-name"
+                            value={createLibraryName}
+                            onChange={(e) =>
+                              setCreateLibraryName(e.target.value)
+                            }
+                            placeholder="Ex.: Meus jogos 2"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="new-library-description">
+                            Descrição
+                          </Label>
+                          <Input
+                            id="new-library-description"
+                            value={createLibraryDescription}
+                            onChange={(e) =>
+                              setCreateLibraryDescription(e.target.value)
+                            }
+                            placeholder="Opcional"
+                          />
+                        </div>
+
+                        {createLibraryError && (
+                          <p className="text-sm text-destructive">
+                            {createLibraryError}
+                          </p>
+                        )}
+
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              setShowCreateLibraryForm(false)
+                              setCreateLibraryName('')
+                              setCreateLibraryDescription('')
+                              setCreateLibraryError('')
+                            }}
+                          >
+                            Cancelar
+                          </Button>
+
+                          <Button
+                            type="button"
+                            onClick={async () => {
+                              setCreateLibraryError('')
+                              try {
+                                const created = await createLibrary.mutateAsync({
+                                  name: createLibraryName,
+                                  description: createLibraryDescription,
+                                })
+
+                                setSaveLibraryId(created.id)
+                                setShowCreateLibraryForm(false)
+                                setCreateLibraryName('')
+                                setCreateLibraryDescription('')
+                              } catch (err) {
+                                setCreateLibraryError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : 'Não foi possível criar a biblioteca.',
+                                )
+                              }
+                            }}
+                          >
+                            Criar biblioteca
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </CardHeader>
 
               <CardContent>
                 {tickets.length === 0 ? (
-                  <div className="rounded-xl border border-dashed p-10 text-center">
-                    <Sparkles className="mx-auto size-10 text-muted-foreground" />
-
-                    <p className="mt-4 text-sm text-muted-foreground">
-                      Selecione as dezenas, organize a sequência e
-                      clique em Gerar cartões.
-                    </p>
+                  <div className="space-y-3 text-sm text-muted-foreground">
+                    Nenhum cartão gerado.
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -596,6 +1021,13 @@ export function GeneratorPage() {
                         key={`${index}-${ticket.numbers.join('-')}`}
                         className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center"
                       >
+                        <input
+                          type="checkbox"
+                          className="size-4 shrink-0"
+                          checked={selectedTicketIndexes.includes(index)}
+                          onChange={() => toggleGeneratedTicket(index)}
+                          aria-label={`Selecionar cartão ${index + 1}`}
+                        />
                         <Badge
                           variant="secondary"
                           className="w-fit shrink-0"
@@ -619,6 +1051,98 @@ export function GeneratorPage() {
                 )}
               </CardContent>
             </Card>
+
+            <Dialog open={saveModalOpen} onOpenChange={setSaveModalOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Salvar jogo gerado</DialogTitle>
+                  <DialogDescription>
+                    Salve este conjunto de cartões para consultar depois.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="saveName">Nome do jogo</Label>
+                    <Input
+                      id="saveName"
+                      value={saveName}
+                      onChange={(event) => setSaveName(event.target.value)}
+                      placeholder="Nome do jogo"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="saveDescription">
+                      Descrição (opcional)
+                    </Label>
+                    <Input
+                      id="saveDescription"
+                      value={saveDescription}
+                      onChange={(event) =>
+                        setSaveDescription(event.target.value)
+                      }
+                      placeholder="Observações sobre este jogo"
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="contestFrom">
+                        Concurso inicial
+                      </Label>
+                      <Input
+                        id="contestFrom"
+                        type="number"
+                        min={0}
+                        value={contestFrom}
+                        onChange={(event) =>
+                          setContestFrom(event.target.value)
+                        }
+                        placeholder="Ex.: 1234"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="contestTo">Concurso final</Label>
+                      <Input
+                        id="contestTo"
+                        type="number"
+                        min={0}
+                        value={contestTo}
+                        onChange={(event) =>
+                          setContestTo(event.target.value)
+                        }
+                        placeholder="Ex.: 1236"
+                      />
+                    </div>
+                  </div>
+
+                  {saveError ? (
+                    <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                      {saveError}
+                    </p>
+                  ) : null}
+                </div>
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setSaveModalOpen(false)}
+                  >
+                    Fechar
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void handleSaveGeneratedGame()}
+                    disabled={ticketsToUse.length === 0 || saveGeneratedGame.isPending}
+                  >
+                    {saveGeneratedGame.isPending ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </>
         )}
       </section>
