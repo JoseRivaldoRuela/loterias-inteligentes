@@ -80,6 +80,7 @@ export function GeneratorPage() {
   })
   const [statisticalEndDate, setStatisticalEndDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [statisticalSuggestion, setStatisticalSuggestion] = useState<StatisticalSuggestion | null>(null)
+  const [statisticalHistory, setStatisticalHistory] = useState<Record<string, number[][]>>({})
   const [statisticalLoading, setStatisticalLoading] = useState(false)
   const [statisticalError, setStatisticalError] = useState('')
   const [message, setMessage] = useState('')
@@ -342,8 +343,13 @@ export function GeneratorPage() {
         statisticalNumberCount,
         statisticalStartDate,
         statisticalEndDate,
+        statisticalHistory[selectedLottery.id] ?? [],
       )
       setStatisticalSuggestion(suggestion)
+      setStatisticalHistory((current) => ({
+        ...current,
+        [selectedLottery.id]: [...(current[selectedLottery.id] ?? []).slice(-2), suggestion.numbers],
+      }))
     } catch (caught) {
       setStatisticalError(caught instanceof Error ? caught.message : 'Não foi possível analisar os concursos.')
     } finally {
@@ -783,7 +789,7 @@ export function GeneratorPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2"><BarChart3 className="size-5" /> Jogo no escuro</CardTitle>
                   <CardDescription>
-                    Escolha o período e a quantidade. A sugestão combina frequência histórica (80%) e atraso recente (20%) nos resultados oficiais da CAIXA.
+                    Escolha o período e a quantidade. A sugestão combina frequência histórica (80%), atraso recente (20%) e diversidade em relação às sugestões anteriores.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-5">
@@ -807,7 +813,7 @@ export function GeneratorPage() {
                       {statisticalLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                       {statisticalLoading ? 'Analisando concursos...' : 'Sugerir dezenas'}
                     </Button>
-                    <p className="text-xs text-muted-foreground">Análise estatística não altera a aleatoriedade do sorteio e não garante premiação.</p>
+                    <p className="text-xs text-muted-foreground">Sugestões consecutivas repetem no máximo cerca de 25% das dezenas, salvo quando a repetição for matematicamente inevitável.</p>
                   </div>
 
                   {statisticalError && <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{statisticalError}</p>}

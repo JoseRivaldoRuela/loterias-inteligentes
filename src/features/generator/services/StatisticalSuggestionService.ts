@@ -23,6 +23,7 @@ export const StatisticalSuggestionService = {
     numberCount: number,
     startDate: string,
     endDate: string,
+    previousSuggestions: number[][] = [],
   ): Promise<StatisticalSuggestion> {
     if (!Number.isInteger(numberCount) || numberCount < lottery.minimumBet || numberCount > lottery.maximumBet) {
       throw new Error(`Escolha entre ${lottery.minimumBet} e ${lottery.maximumBet} dezenas.`)
@@ -51,8 +52,32 @@ export const StatisticalSuggestionService = {
         + (item.contestsSinceLastAppearance / maximumDelay) * 0.2,
     })).sort((a, b) => b.score - a.score || b.appearances - a.appearances || a.number - b.number)
 
+    const recentUsage = new Map<number, number>()
+    previousSuggestions.slice(-3).forEach((suggestion, suggestionIndex, recent) => {
+      const weight = (suggestionIndex + 1) / recent.length
+      suggestion.forEach((number) => recentUsage.set(number, (recentUsage.get(number) ?? 0) + weight))
+    })
+    const diversifiedRanking = [...statistics].sort((a, b) => {
+      const adjustedA = a.score - (recentUsage.get(a.number) ?? 0) * 0.18
+      const adjustedB = b.score - (recentUsage.get(b.number) ?? 0) * 0.18
+      return adjustedB - adjustedA || b.score - a.score || a.number - b.number
+    })
+
+    const lastSuggestion = new Set(previousSuggestions.at(-1) ?? [])
+    const unavoidableOverlap = Math.max(0, numberCount + lastSuggestion.size - lottery.availableNumbers)
+    const overlapLimit = Math.max(unavoidableOverlap, Math.floor(numberCount * 0.25))
+    const selected: number[] = []
+    let overlap = 0
+    for (const statistic of diversifiedRanking) {
+      const repeated = lastSuggestion.has(statistic.number)
+      if (repeated && overlap >= overlapLimit) continue
+      selected.push(statistic.number)
+      if (repeated) overlap += 1
+      if (selected.length === numberCount) break
+    }
+
     return {
-      numbers: statistics.slice(0, numberCount).map((item) => item.number).sort((a, b) => a - b),
+      numbers: selected.sort((a, b) => a - b),
       drawCount: draws.length,
       firstContest: draws.at(-1)!.contestNumber,
       lastContest: draws[0].contestNumber,
