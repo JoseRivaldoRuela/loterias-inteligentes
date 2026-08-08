@@ -1,5 +1,10 @@
 type ApiRequest = { method?: string; body?: Record<string, unknown> | string }
-type ApiResponse = { status: (code: number) => ApiResponse; json: (body: unknown) => void }
+type ApiResponse = {
+  status: (code: number) => ApiResponse
+  json: (body: unknown) => void
+  setHeader: (name: string, value: string) => void
+  end: () => void
+}
 
 const gameCodes: Record<string, string> = {
   'mega-sena': 'megasena', megasena: 'megasena', lotofacil: 'lotofacil', quina: 'quina',
@@ -13,6 +18,10 @@ function timestamp(value: string) {
 export const maxDuration = 60
 
 export default async function handler(request: ApiRequest, response: ApiResponse) {
+  response.setHeader('Access-Control-Allow-Origin', '*')
+  response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (request.method === 'OPTIONS') return response.status(204).end()
   if (request.method !== 'POST') return response.status(405).json({ error: 'Método não permitido.' })
   try {
     const payload = typeof request.body === 'string' ? JSON.parse(request.body) : request.body ?? {}

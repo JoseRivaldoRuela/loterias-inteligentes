@@ -102,12 +102,20 @@ export const LotteryResultsService = {
       throw new Error('Informe um período válido para a análise.')
     }
 
-    const response = await fetch('/api/lottery-history', {
+    const localDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    const apiBaseUrl = localDevelopment ? 'https://loterias-inteligentes.vercel.app' : ''
+    const response = await fetch(`${apiBaseUrl}/api/lottery-history`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, startDate, endDate }),
     })
-    const data = await response.json()
+    const responseText = await response.text()
+    let data: { error?: string; results?: LotteryResult[] }
+    try {
+      data = responseText ? JSON.parse(responseText) : {}
+    } catch {
+      throw new Error('O serviço de histórico retornou uma resposta inválida. Reinicie o servidor local e tente novamente.')
+    }
     if (!response.ok) throw new Error(data?.error ?? 'Não foi possível consultar o histórico.')
     if (data?.error) throw new Error(data.error)
     return (data?.results ?? []) as LotteryResult[]
