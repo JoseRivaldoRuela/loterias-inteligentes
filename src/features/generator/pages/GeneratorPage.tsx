@@ -6,6 +6,7 @@ import {
   Download,
   RefreshCw,
   Sparkles,
+  BarChart3,
   Trash2,
   Plus,
 } from 'lucide-react'
@@ -42,6 +43,10 @@ import { useLibraries } from '@/features/libraries/hooks/useLibraries'
 import { useCreateLibrary } from '@/features/libraries/hooks/useLibraries'
 import { useSaveGeneratedGame } from '@/features/saved-games/hooks/useSaveGeneratedGame'
 import {
+  StatisticalSuggestionService,
+  type StatisticalSuggestion,
+} from '@/features/generator/services/StatisticalSuggestionService'
+import {
   exportTicketsAsExcel,
   exportTicketsAsPdf,
 } from '@/lib/export'
@@ -67,6 +72,16 @@ export function GeneratorPage() {
   const [assembledTickets, setAssembledTickets] = useState<GeneratedTicket[]>([])
   const [manualTicketSize, setManualTicketSize] = useState(15)
   const [manualTicketNumbers, setManualTicketNumbers] = useState<number[]>([])
+  const [statisticalNumberCount, setStatisticalNumberCount] = useState(15)
+  const [statisticalStartDate, setStatisticalStartDate] = useState(() => {
+    const date = new Date()
+    date.setFullYear(date.getFullYear() - 1)
+    return date.toISOString().slice(0, 10)
+  })
+  const [statisticalEndDate, setStatisticalEndDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [statisticalSuggestion, setStatisticalSuggestion] = useState<StatisticalSuggestion | null>(null)
+  const [statisticalLoading, setStatisticalLoading] = useState(false)
+  const [statisticalError, setStatisticalError] = useState('')
   const [message, setMessage] = useState('')
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
@@ -119,7 +134,10 @@ export function GeneratorPage() {
     setSelectedLotteryId(selectedLottery.id)
     setNumbersPerTicket(selectedLottery.minimumBet)
     setManualTicketSize(selectedLottery.minimumBet)
+    setStatisticalNumberCount(selectedLottery.minimumBet)
+    setStatisticalSuggestion(null)
     setManualTicketNumbers([])
+    setStatisticalSuggestion(null)
     setSelectedNumbers(availableNumbers)
     setTickets([])
     setMessage('')
@@ -311,6 +329,37 @@ export function GeneratorPage() {
     setAssembledTickets((current) => [...current, { numbers: [...manualTicketNumbers].sort((a, b) => a - b) }])
     setManualTicketNumbers([])
     setMessage(`Cartão manual de ${manualTicketSize} dezenas adicionado.`)
+  }
+
+  async function generateStatisticalSuggestion() {
+    if (!selectedLottery) return
+    setStatisticalLoading(true)
+    setStatisticalError('')
+    setStatisticalSuggestion(null)
+    try {
+      const suggestion = await StatisticalSuggestionService.suggest(
+        selectedLottery,
+        statisticalNumberCount,
+        statisticalStartDate,
+        statisticalEndDate,
+      )
+      setStatisticalSuggestion(suggestion)
+    } catch (caught) {
+      setStatisticalError(caught instanceof Error ? caught.message : 'Não foi possível analisar os concursos.')
+    } finally {
+      setStatisticalLoading(false)
+    }
+  }
+
+  function addStatisticalSuggestion() {
+    if (!statisticalSuggestion) return
+    const key = statisticalSuggestion.numbers.join('-')
+    if (assembledTickets.some((ticket) => [...ticket.numbers].sort((a, b) => a - b).join('-') === key)) {
+      setMessage('Esta sugestão já foi adicionada ao jogo.')
+      return
+    }
+    setAssembledTickets((current) => [...current, { numbers: statisticalSuggestion.numbers }])
+    setMessage('Sugestão estatística adicionada ao jogo.')
   }
 
   const ticketsToUse = assembledTickets.length > 0 ? assembledTickets : tickets
@@ -728,6 +777,66 @@ export function GeneratorPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {selectedLottery && (
+              <Card className="border-violet-500/40">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><BarChart3 className="size-5" /> Jogo no escuro</CardTitle>
+                  <CardDescription>
+                    Escolha o período e a quantidade. A sugestão combina frequência histórica (80%) e atraso recente (20%) nos resultados oficiais da CAIXA.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="statisticalNumberCount">Quantidade de dezenas</Label>
+                      <Input id="statisticalNumberCount" type="number" min={selectedLottery.minimumBet} max={selectedLottery.maximumBet} value={statisticalNumberCount} onChange={(event) => setStatisticalNumberCount(Number(event.target.value))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="statisticalStartDate">Início do período</Label>
+                      <Input id="statisticalStartDate" type="date" value={statisticalStartDate} max={statisticalEndDate} onChange={(event) => setStatisticalStartDate(event.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="statisticalEndDate">Fim do período</Label>
+                      <Input id="statisticalEndDate" type="date" value={statisticalEndDate} min={statisticalStartDate} max={new Date().toISOString().slice(0, 10)} onChange={(event) => setStatisticalEndDate(event.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button type="button" onClick={() => void generateStatisticalSuggestion()} disabled={statisticalLoading}>
+                      {statisticalLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                      {statisticalLoading ? 'Analisando concursos...' : 'Sugerir dezenas'}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">Análise estatística não altera a aleatoriedade do sorteio e não garante premiação.</p>
+                  </div>
+
+                  {statisticalError && <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{statisticalError}</p>}
+
+                  {statisticalSuggestion && (
+                    <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">Sugestão baseada em {statisticalSuggestion.drawCount} concursos</p>
+                          <p className="text-xs text-muted-foreground">Concursos {statisticalSuggestion.firstContest} a {statisticalSuggestion.lastContest}</p>
+                        </div>
+                        <Button type="button" variant="secondary" onClick={addStatisticalSuggestion}><Plus className="size-4" /> Adicionar ao jogo</Button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {statisticalSuggestion.numbers.map((number) => {
+                          const statistic = statisticalSuggestion.statistics.find((item) => item.number === number)!
+                          return (
+                            <div key={`suggested-${number}`} className="flex flex-col items-center gap-1">
+                              <span className="flex size-12 items-center justify-center rounded-full bg-violet-600 font-semibold text-white">{String(number).padStart(2, '0')}</span>
+                              <span className="text-[10px] text-muted-foreground">{statistic.appearances}x</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {selectedLottery && (
               <Card>

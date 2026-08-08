@@ -94,4 +94,40 @@ export const LotteryResultsService = {
     }
     throw new Error('Não houve sorteio dessa loteria na data informada.')
   },
+
+  async findHistory(code: string, startDate: string, endDate: string): Promise<LotteryResult[]> {
+    const start = Date.parse(`${startDate}T00:00:00Z`)
+    const end = Date.parse(`${endDate}T23:59:59Z`)
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+      throw new Error('Informe um período válido para a análise.')
+    }
+
+    const latest = await fetchResult(code)
+    const results: LotteryResult[] = []
+    const batchSize = 12
+    let cursor = latest.contestNumber
+    let reachedStart = false
+
+    while (cursor > 0 && !reachedStart && results.length < 2000) {
+      const contestNumbers = Array.from(
+        { length: Math.min(batchSize, cursor) },
+        (_, index) => cursor - index,
+      )
+      const batch = await Promise.allSettled(
+        contestNumbers.map((contest) =>
+          contest === latest.contestNumber ? Promise.resolve(latest) : fetchResult(code, contest),
+        ),
+      )
+
+      for (const item of batch) {
+        if (item.status !== 'fulfilled') continue
+        const timestamp = parseBrazilianDate(item.value.drawDate)
+        if (timestamp < start) reachedStart = true
+        if (timestamp >= start && timestamp <= end) results.push(item.value)
+      }
+      cursor -= batchSize
+    }
+
+    return results.sort((a, b) => b.contestNumber - a.contestNumber)
+  },
 }
