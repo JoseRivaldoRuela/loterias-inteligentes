@@ -73,6 +73,7 @@ export function GeneratorPage() {
   const [manualTicketSize, setManualTicketSize] = useState(15)
   const [manualTicketNumbers, setManualTicketNumbers] = useState<number[]>([])
   const [statisticalNumberCount, setStatisticalNumberCount] = useState(15)
+  const [statisticalGameCount, setStatisticalGameCount] = useState(1)
   const [statisticalStartDate, setStatisticalStartDate] = useState(() => {
     const date = new Date()
     date.setFullYear(date.getFullYear() - 1)
@@ -344,11 +345,12 @@ export function GeneratorPage() {
         statisticalStartDate,
         statisticalEndDate,
         statisticalHistory[selectedLottery.id] ?? [],
+        statisticalGameCount,
       )
       setStatisticalSuggestion(suggestion)
       setStatisticalHistory((current) => ({
         ...current,
-        [selectedLottery.id]: [...(current[selectedLottery.id] ?? []).slice(-2), suggestion.numbers],
+        [selectedLottery.id]: [...(current[selectedLottery.id] ?? []), ...suggestion.games].slice(-3),
       }))
     } catch (caught) {
       setStatisticalError(caught instanceof Error ? caught.message : 'Não foi possível analisar os concursos.')
@@ -359,13 +361,14 @@ export function GeneratorPage() {
 
   function addStatisticalSuggestion() {
     if (!statisticalSuggestion) return
-    const key = statisticalSuggestion.numbers.join('-')
-    if (assembledTickets.some((ticket) => [...ticket.numbers].sort((a, b) => a - b).join('-') === key)) {
-      setMessage('Esta sugestão já foi adicionada ao jogo.')
-      return
-    }
-    setAssembledTickets((current) => [...current, { numbers: statisticalSuggestion.numbers }])
-    setMessage('Sugestão estatística adicionada ao jogo.')
+    setAssembledTickets((current) => {
+      const existing = new Set(current.map((ticket) => [...ticket.numbers].sort((a, b) => a - b).join('-')))
+      const additions = statisticalSuggestion.games
+        .filter((game) => !existing.has(game.join('-')))
+        .map((numbers) => ({ numbers }))
+      return [...current, ...additions]
+    })
+    setMessage(`${statisticalSuggestion.games.length} sugestão(ões) estatística(s) adicionada(s) ao jogo.`)
   }
 
   const ticketsToUse = assembledTickets.length > 0 ? assembledTickets : tickets
@@ -793,10 +796,14 @@ export function GeneratorPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-2">
                       <Label htmlFor="statisticalNumberCount">Quantidade de dezenas</Label>
                       <Input id="statisticalNumberCount" type="number" min={selectedLottery.minimumBet} max={selectedLottery.maximumBet} value={statisticalNumberCount} onChange={(event) => setStatisticalNumberCount(Number(event.target.value))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="statisticalGameCount">Quantidade de jogos</Label>
+                      <Input id="statisticalGameCount" type="number" min={1} max={20} value={statisticalGameCount} onChange={(event) => setStatisticalGameCount(Number(event.target.value))} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="statisticalStartDate">Início do período</Label>
@@ -823,20 +830,27 @@ export function GeneratorPage() {
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <p className="font-semibold">Sugestão baseada em {statisticalSuggestion.drawCount} concursos</p>
-                          <p className="text-xs text-muted-foreground">Concursos {statisticalSuggestion.firstContest} a {statisticalSuggestion.lastContest}</p>
+                          <p className="text-xs text-muted-foreground">Concursos {statisticalSuggestion.firstContest} a {statisticalSuggestion.lastContest} • dados de {statisticalSuggestion.firstDrawDate} a {statisticalSuggestion.lastDrawDate}</p>
                         </div>
-                        <Button type="button" variant="secondary" onClick={addStatisticalSuggestion}><Plus className="size-4" /> Adicionar ao jogo</Button>
+                        <Button type="button" variant="secondary" onClick={addStatisticalSuggestion}><Plus className="size-4" /> Adicionar {statisticalSuggestion.games.length} jogo(s)</Button>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {statisticalSuggestion.numbers.map((number) => {
-                          const statistic = statisticalSuggestion.statistics.find((item) => item.number === number)!
-                          return (
-                            <div key={`suggested-${number}`} className="flex flex-col items-center gap-1">
-                              <span className="flex size-12 items-center justify-center rounded-full bg-violet-600 font-semibold text-white">{String(number).padStart(2, '0')}</span>
-                              <span className="text-[10px] text-muted-foreground">{statistic.appearances}x</span>
+                      <div className="space-y-3">
+                        {statisticalSuggestion.games.map((game, gameIndex) => (
+                          <div key={`statistical-game-${gameIndex}`} className="rounded-lg border bg-background p-3">
+                            <p className="mb-2 text-sm font-medium">Jogo {gameIndex + 1}</p>
+                            <div className="flex flex-wrap gap-2">
+                              {game.map((number) => {
+                                const statistic = statisticalSuggestion.statistics.find((item) => item.number === number)!
+                                return (
+                                  <div key={`suggested-${gameIndex}-${number}`} className="flex flex-col items-center gap-1">
+                                    <span className="flex size-12 items-center justify-center rounded-full bg-violet-600 font-semibold text-white">{String(number).padStart(2, '0')}</span>
+                                    <span className="text-[10px] text-muted-foreground">{statistic.appearances}x</span>
+                                  </div>
+                                )
+                              })}
                             </div>
-                          )
-                        })}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "api/lottery-history.ts": { "maxDuration": 60 }
+  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
