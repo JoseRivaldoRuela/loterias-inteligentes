@@ -44,10 +44,23 @@ const libraryFields = `
 
 export const LibraryRepository = {
   async getAll(): Promise<Library[]> {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      throw new Error('Usuário não autenticado.')
+    }
+
+    // Retorna bibliotecas pertencentes ao usuário autenticado e
+    // também quaisquer bibliotecas ativas. Isso cobre casos onde existem
+    // bibliotecas públicas/ativas ou bibliotecas de bolões que devem
+    // aparecer no seletor.
     const { data, error } = await supabase
       .from('libraries')
       .select(libraryFields)
-      .eq('active', true)
+      .or(`owner_id.eq.${user.id},active.eq.true`)
       .order('name')
 
     if (error) {

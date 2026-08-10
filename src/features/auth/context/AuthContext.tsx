@@ -34,6 +34,7 @@ type AuthContextValue = {
   user: User | null
   subscription: Subscription | null
   isSubscriber: boolean
+  isAdmin: boolean
   loading: boolean
   subscriptionLoading: boolean
   signIn: (email: string, password: string) => Promise<void>
@@ -69,6 +70,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null)
   const [subscription, setSubscription] =
     useState<Subscription | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
@@ -76,6 +78,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const loadSubscription = useCallback(async (userId: string | null) => {
     if (!userId) {
       setSubscription(null)
+      setIsAdmin(false)
       setSubscriptionLoading(false)
       return
     }
@@ -83,9 +86,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setSubscriptionLoading(true)
 
     try {
-      const { data, error } = await supabase
-        .from('user_subscriptions')
-        .select(
+      const claimResult = await supabase.rpc('accept_my_betting_pool_invitations')
+      if (claimResult.error) {
+        console.error('Erro ao aceitar convites de bolão:', claimResult.error)
+      }
+
+      const [subscriptionResult, profileResult] = await Promise.all([
+        supabase.from('user_subscriptions').select(
           `
             id,
             user_id,
@@ -97,16 +104,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
           `,
         )
         .eq('user_id', userId)
-        .maybeSingle()
+        .maybeSingle(),
+        supabase.from('profiles').select('role, active').eq('id', userId).maybeSingle(),
+      ])
 
-      if (error) {
-        throw error
+      if (subscriptionResult.error) {
+        throw subscriptionResult.error
       }
 
-      setSubscription((data as Subscription | null) ?? null)
+      setSubscription((subscriptionResult.data as Subscription | null) ?? null)
+      setIsAdmin(profileResult.data?.role === 'admin' && profileResult.data?.active === true)
     } catch (error) {
       console.error('Erro ao consultar assinatura:', error)
       setSubscription(null)
+      setIsAdmin(false)
     } finally {
       setSubscriptionLoading(false)
     }
@@ -203,6 +214,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     setSubscription(null)
+    setIsAdmin(false)
   }
 
   const isSubscriber = useMemo(
@@ -216,6 +228,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       user: session?.user ?? null,
       subscription,
       isSubscriber,
+      isAdmin,
       loading,
       subscriptionLoading,
       signIn,
@@ -228,6 +241,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       session,
       subscription,
       isSubscriber,
+      isAdmin,
       loading,
       subscriptionLoading,
       refreshSubscription,

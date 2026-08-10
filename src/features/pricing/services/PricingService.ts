@@ -39,6 +39,17 @@ export const PricingService = {
     }
   },
 
+  async calculateTicketsTotal(lotteryId: string, tickets: number[][]): Promise<number> {
+    const sizes = [...new Set(tickets.map((ticket) => ticket.length))]
+    const prices = await Promise.all(sizes.map((size) => this.getCurrentPrice(lotteryId, size)))
+    const missingIndex = prices.findIndex((price) => !price)
+    if (missingIndex >= 0) throw new Error(`Preço não cadastrado para apostas de ${sizes[missingIndex]} dezenas.`)
+    return tickets.reduce((total, ticket) => {
+      const price = prices[sizes.indexOf(ticket.length)]!
+      return total + price.price
+    }, 0)
+  },
+
   formatCurrency(value: number): string {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',

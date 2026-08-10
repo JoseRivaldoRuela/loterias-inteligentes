@@ -11,12 +11,15 @@ import {
   LogOut,
   Menu,
   Settings,
+  Search,
   Sparkles,
   Trophy,
+  Users,
   User,
 } from 'lucide-react'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -37,12 +40,20 @@ type AppLayoutProps = {
   children: ReactNode
 }
 
-const menuItems = [
+type MenuItem = { label: string; path: string; icon: typeof Gauge; child?: boolean }
+
+const menuItems: MenuItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: Gauge },
   { label: 'Loterias', path: '/loterias', icon: Trophy },
   { label: 'Bibliotecas', path: '/bibliotecas', icon: Folder },
   { label: 'Gerador', path: '/gerador', icon: Sparkles },
-  { label: 'Conferência', path: '/conferencia', icon: CheckCircle2 },
+  { label: 'Jogo no escuro', path: '/gerador/escuro', icon: BarChart3, child: true },
+  { label: 'Montagem manual', path: '/gerador/manual', icon: ListChecks, child: true },
+  { label: 'Fechamentos', path: '/fechamentos', icon: ListChecks },
+  { label: 'Jogos salvos', path: '/salvos', icon: Folder },
+  { label: 'Bolões', path: '/boloes', icon: Users },
+  { label: 'Conferência', path: '/conferencia/boloes', icon: CheckCircle2 },
+  { label: 'Resultados', path: '/resultados', icon: Search },
   { label: 'Estatísticas', path: '/estatisticas', icon: BarChart3 },
   { label: 'Simulações', path: '/simulacoes', icon: ListChecks },
   { label: 'Laboratório', path: '/laboratorio', icon: BrainCircuit },
@@ -63,12 +74,13 @@ function SidebarContent() {
       <Separator className="bg-slate-800" />
 
       <nav className="flex-1 space-y-1 p-3">
-        {menuItems.map(({ label, path, icon: Icon }) => (
+        {menuItems.map(({ label, path, icon: Icon, child }) => (
           <NavLink
             key={path}
             to={path}
+            end={path === '/gerador'}
             className={({ isActive }) =>
-              `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+              `flex w-full items-center gap-3 rounded-lg py-2.5 text-left text-sm transition ${child ? 'pl-9 pr-3 text-xs' : 'px-3'} ${
                 isActive
                   ? 'bg-primary font-medium text-primary-foreground'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -102,6 +114,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const email = user?.email ?? 'Usuário'
   const initials = email.slice(0, 2).toUpperCase()
   const accountType = isSubscriber ? 'Assinante' : 'Usuário gratuito'
+  const accountVariant = isSubscriber ? 'default' : 'secondary'
 
   return (
     <div className="min-h-screen bg-muted/40">
@@ -174,9 +187,11 @@ export function AppLayout({ children }: AppLayoutProps) {
                       {email}
                     </p>
 
-                    <p className="text-xs text-muted-foreground">
-                      {accountType}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={accountVariant}>
+                        {accountType}
+                      </Badge>
+                    </div>
                   </div>
 
                   <ChevronDown className="size-4 text-muted-foreground" />
@@ -191,9 +206,11 @@ export function AppLayout({ children }: AppLayoutProps) {
                         {email}
                       </p>
 
-                      <p className="text-xs text-muted-foreground">
-                        {accountType}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <Badge variant={accountVariant}>
+                          {accountType}
+                        </Badge>
+                      </div>
                     </div>
                   </DropdownMenuItem>
 

@@ -112,4 +112,29 @@ export const CoveringDesignRequestRepository = {
       data as CoveringDesignRequestRow,
     )
   },
+
+  async listByUser(): Promise<CoveringDesignRequest[]> {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      throw new Error('Usuário não autenticado.')
+    }
+
+    const { data, error } = await supabase
+      .from('covering_design_requests')
+      .select(
+        `id, user_id, lottery_id, universe_size, ticket_size, guarantee_size, status, requested_at, updated_at`,
+      )
+      .eq('user_id', user.id)
+      .order('requested_at', { ascending: false })
+
+    if (error) {
+      throw new Error(`Erro ao carregar solicitações: ${error.message}`)
+    }
+
+    return (data as CoveringDesignRequestRow[]).map(mapRequest)
+  },
 }

@@ -5,11 +5,13 @@ import {
   ArrowUp,
   CheckCircle2,
   Database,
+  Download,
   LoaderCircle,
   RefreshCw,
   Send,
   ShieldCheck,
   Trash2,
+  Plus,
 } from 'lucide-react'
 
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -22,15 +24,31 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LotteryEngine } from '@/core/lottery/LotteryEngine'
 import { LotteryFactory } from '@/core/lottery/LotteryFactory'
 import { useCoveringDesign } from '@/features/closures/hooks/useCoveringDesign'
+import { useSaveClosure } from '@/features/closures/hooks/useSavedClosure'
 import { CoveringDesignRequestService } from '@/features/closures/services/CoveringDesignRequestService'
 import { CoveringDesignService } from '@/features/closures/services/CoveringDesignService'
 import { useLotteries } from '@/features/lotteries/hooks/useLotteries'
+import { useLibraries } from '@/features/libraries/hooks/useLibraries'
+import { useCreateLibrary } from '@/features/libraries/hooks/useLibraries'
 import { useBetPrice } from '@/features/pricing/hooks/useBetPrice'
 import { PricingService } from '@/features/pricing/services/PricingService'
+import {
+  exportTicketsAsExcel,
+  exportTicketsAsPdf,
+} from '@/lib/export'
 
 export function ClosuresPage() {
   const {
@@ -40,14 +58,40 @@ export function ClosuresPage() {
     error: lotteriesErrorDetails,
   } = useLotteries()
 
+  const {
+    data: libraries = [],
+  } = useLibraries()
+  const personalLibraries = useMemo(() => libraries.filter((library) => library.libraryType === 'personal'), [libraries])
+
   const [selectedLotteryId, setSelectedLotteryId] = useState('')
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([])
   const [ticketSize, setTicketSize] = useState(15)
   const [guaranteeSize, setGuaranteeSize] = useState(12)
   const [generatedTickets, setGeneratedTickets] = useState<number[][]>([])
+  const [saveLibraryId, setSaveLibraryId] = useState('')
+  const [showCreateLibraryForm, setShowCreateLibraryForm] = useState(false)
+  const [createLibraryName, setCreateLibraryName] = useState('')
+  const [createLibraryDescription, setCreateLibraryDescription] = useState('')
+  const [createLibraryError, setCreateLibraryError] = useState('')
+  const [contestFrom, setContestFrom] = useState('')
+  const [contestTo, setContestTo] = useState('')
   const [message, setMessage] = useState('')
   const [requestingDesign, setRequestingDesign] = useState(false)
   const [requestRegistered, setRequestRegistered] = useState(false)
+  const [saveModalOpen, setSaveModalOpen] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [saveDescription, setSaveDescription] = useState('')
+  const [saveError, setSaveError] = useState('')
+
+  const saveClosure = useSaveClosure()
+
+  useEffect(() => {
+    if ((!saveLibraryId || !personalLibraries.some((library) => library.id === saveLibraryId)) && personalLibraries.length > 0) {
+      setSaveLibraryId(personalLibraries[0].id)
+    }
+  }, [personalLibraries, saveLibraryId])
+
+  const createLibrary = useCreateLibrary()
 
   const effectiveLotteryId =
     selectedLotteryId || lotteries.at(0)?.id || ''
@@ -137,16 +181,25 @@ export function ClosuresPage() {
       return
     }
 
+    const configuredUniverse = Number(
+      selectedLottery.configuration.defaultClosureUniverse,
+    )
     const initialUniverseSize = Math.min(
-      18,
+      Number.isInteger(configuredUniverse) && configuredUniverse >= selectedLottery.minimumBet
+        ? configuredUniverse
+        : 18,
       selectedLottery.availableNumbers,
     )
 
+    const configuredGuarantee = Number(
+      selectedLottery.configuration.defaultGuarantee,
+    )
     const defaultGuarantee =
-      selectedLottery.prizeTiers.some((tier) => tier.hits === 12)
-        ? 12
-        : selectedLottery.prizeTiers.at(0)?.hits ??
-          selectedLottery.drawnNumbers
+      selectedLottery.prizeTiers.some((tier) => tier.hits === configuredGuarantee)
+        ? configuredGuarantee
+        : selectedLottery.prizeTiers.some((tier) => tier.hits === 12)
+          ? 12
+          : selectedLottery.prizeTiers.at(0)?.hits ?? selectedLottery.drawnNumbers
 
     setSelectedLotteryId(selectedLottery.id)
     setTicketSize(selectedLottery.minimumBet)
@@ -295,6 +348,25 @@ export function ClosuresPage() {
     }
   }
 
+  function handleExportClosureTickets(format: 'excel' | 'pdf'): void {
+    if (!selectedLottery || generatedTickets.length === 0) {
+      return
+    }
+
+    const fileName = `fechamento_${selectedLottery.name}_${new Date()
+      .toISOString()
+      .slice(0, 10)}`
+    const title = `Fechamento - ${selectedLottery.name}`
+    const description = `C(${selectedNumbers.length}, ${ticketSize}, ${guaranteeSize})`
+    const data = generatedTickets
+
+    if (format === 'excel') {
+      exportTicketsAsExcel(fileName, title, description, data)
+    } else {
+      exportTicketsAsPdf(fileName, title, description, data)
+    }
+  }
+
   async function handleRequestDesign(): Promise<void> {
     if (!selectedLottery) {
       setMessage('Selecione uma loteria.')
@@ -326,6 +398,54 @@ export function ClosuresPage() {
       )
     } finally {
       setRequestingDesign(false)
+    }
+  }
+
+  async function handleSaveClosure(): Promise<void> {
+    if (!selectedLottery) {
+      setSaveError('Selecione uma loteria para salvar o fechamento.')
+      return
+    }
+
+    if (generatedTickets.length === 0) {
+      setSaveError('Gere o fechamento antes de salvar o jogo.')
+      return
+    }
+
+    if (!saveName.trim()) {
+      setSaveError('Informe um nome para o jogo salvo.')
+      return
+    }
+
+    setSaveError('')
+
+    try {
+      await saveClosure.mutateAsync({
+        lotteryId: selectedLottery.id,
+        name: saveName.trim(),
+        description: saveDescription.trim() || null,
+        selectedNumbers,
+        ticketSize,
+        guaranteeSize,
+        generatedTickets,
+        libraryId: saveLibraryId || null,
+        contestFrom: contestFrom.trim() || null,
+        contestTo: contestTo.trim() || null,
+      })
+
+      setSaveModalOpen(false)
+      setSaveName('')
+      setSaveDescription('')
+      setSaveLibraryId(personalLibraries[0]?.id ?? '')
+      setContestFrom('')
+      setContestTo('')
+      setMessage('Jogo salvo com sucesso.')
+    } catch (saveError) {
+      setSaveError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Não foi possível salvar o fechamento.',
+      )
     }
   }
 
@@ -628,30 +748,310 @@ export function ClosuresPage() {
                         {generateButtonLabel}
                       </Button>
 
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full"
-                        disabled={coveringFetching}
-                        onClick={() =>
-                          void refetchCovering()
-                        }
-                      >
-                        <RefreshCw
-                          className={`size-4 ${
-                            coveringFetching
-                              ? 'animate-spin'
-                              : ''
-                          }`}
-                        />
-                        Consultar novamente
-                      </Button>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full"
+                          disabled={generatedTickets.length === 0}
+                          onClick={() =>
+                            handleExportClosureTickets('excel')
+                          }
+                        >
+                          <Download className="size-4" />
+                          Excel
+                        </Button>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full"
+                          disabled={generatedTickets.length === 0}
+                          onClick={() =>
+                            handleExportClosureTickets('pdf')
+                          }
+                        >
+                          <Download className="size-4" />
+                          PDF
+                        </Button>
+                      </div>
+
+                      <div className="rounded-xl border border-input bg-background p-4">
+                        <p className="text-sm font-semibold">
+                          Salvar na biblioteca
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Selecione a biblioteca para salvar este fechamento.
+                        </p>
+
+                        <div className="mt-3">
+                          <Label htmlFor="saveLibrary">Biblioteca</Label>
+                          <div className="flex items-center gap-2">
+                            <select
+                              id="saveLibrary"
+                              value={saveLibraryId}
+                              onChange={(event) =>
+                                setSaveLibraryId(event.target.value)
+                              }
+                              className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                            >
+                              <option value="">Sem biblioteca</option>
+                              {personalLibraries.map((library) => (
+                                <option key={library.id} value={library.id}>
+                                  {library.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => setShowCreateLibraryForm(true)}
+                              title="Criar nova biblioteca"
+                            >
+                              <Plus className="size-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                      {showCreateLibraryForm && (
+                        <Card className="mt-3">
+                          <CardHeader>
+                            <CardTitle>Nova biblioteca</CardTitle>
+                            <CardDescription>
+                              Crie uma biblioteca para organizar seus jogos.
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div className="space-y-2">
+                              <Label htmlFor="new-library-name">Nome</Label>
+                              <Input
+                                id="new-library-name"
+                                value={createLibraryName}
+                                onChange={(e) =>
+                                  setCreateLibraryName(e.target.value)
+                                }
+                                placeholder="Ex.: Meus jogos 2"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="new-library-description">
+                                Descrição
+                              </Label>
+                              <Input
+                                id="new-library-description"
+                                value={createLibraryDescription}
+                                onChange={(e) =>
+                                  setCreateLibraryDescription(e.target.value)
+                                }
+                                placeholder="Opcional"
+                              />
+                            </div>
+
+                            {createLibraryError && (
+                              <p className="text-sm text-destructive">
+                                {createLibraryError}
+                              </p>
+                            )}
+
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                  setShowCreateLibraryForm(false)
+                                  setCreateLibraryName('')
+                                  setCreateLibraryDescription('')
+                                  setCreateLibraryError('')
+                                }}
+                              >
+                                Cancelar
+                              </Button>
+
+                              <Button
+                                type="button"
+                                onClick={async () => {
+                                  setCreateLibraryError('')
+                                  try {
+                                    const created = await createLibrary.mutateAsync({
+                                      name: createLibraryName,
+                                      description: createLibraryDescription,
+                                    })
+
+                                    setSaveLibraryId(created.id)
+                                    setShowCreateLibraryForm(false)
+                                    setCreateLibraryName('')
+                                    setCreateLibraryDescription('')
+                                  } catch (err) {
+                                    setCreateLibraryError(
+                                      err instanceof Error
+                                        ? err.message
+                                        : 'Não foi possível criar a biblioteca.',
+                                    )
+                                  }
+                                }}
+                              >
+                                Criar biblioteca
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="w-full"
+                          disabled={
+                            generatedTickets.length === 0 ||
+                            saveClosure.isPending
+                          }
+                          onClick={() =>
+                            setSaveModalOpen(true)
+                          }
+                        >
+                          Salvar jogo
+                        </Button>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full"
+                          disabled={coveringFetching}
+                          onClick={() =>
+                            void refetchCovering()
+                          }
+                        >
+                          <RefreshCw
+                            className={`size-4 ${
+                              coveringFetching
+                                ? 'animate-spin'
+                                : ''
+                            }`}
+                          />
+                          Consultar novamente
+                        </Button>
+                      </div>
 
                       {message && (
                         <p className="rounded-lg bg-muted p-3 text-sm">
                           {message}
                         </p>
                       )}
+
+                      <Dialog open={saveModalOpen} onOpenChange={setSaveModalOpen}>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Salvar fechamento</DialogTitle>
+                            <DialogDescription>
+                              Informe um nome e, opcionalmente, uma
+                              descrição para gravar este jogo.
+                            </DialogDescription>
+                          </DialogHeader>
+
+                          <div className="space-y-4 py-2">
+                            <div className="space-y-2">
+                              <Label htmlFor="save-name">
+                                Nome do jogo
+                              </Label>
+
+                              <Input
+                                id="save-name"
+                                value={saveName}
+                                onChange={(event) =>
+                                  setSaveName(event.target.value)
+                                }
+                                placeholder="Ex.: Fechamento 12/15"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="save-description">
+                                Descrição
+                              </Label>
+
+                              <Input
+                                id="save-description"
+                                value={saveDescription}
+                                onChange={(event) =>
+                                  setSaveDescription(
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="Opcional"
+                              />
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-2">
+                                <Label htmlFor="contestFrom">
+                                  Concurso inicial
+                                </Label>
+
+                                <Input
+                                  id="contestFrom"
+                                  type="number"
+                                  min={0}
+                                  value={contestFrom}
+                                  onChange={(event) =>
+                                    setContestFrom(event.target.value)
+                                  }
+                                  placeholder="Ex.: 1234"
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label htmlFor="contestTo">
+                                  Concurso final
+                                </Label>
+
+                                <Input
+                                  id="contestTo"
+                                  type="number"
+                                  min={0}
+                                  value={contestTo}
+                                  onChange={(event) =>
+                                    setContestTo(event.target.value)
+                                  }
+                                  placeholder="Ex.: 1236"
+                                />
+                              </div>
+                            </div>
+
+                            {saveError && (
+                              <p className="text-sm text-destructive">
+                                {saveError}
+                              </p>
+                            )}
+                          </div>
+
+                          <DialogFooter>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => setSaveModalOpen(false)}
+                              disabled={saveClosure.isPending}
+                            >
+                              Cancelar
+                            </Button>
+
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                void handleSaveClosure()
+                              }
+                              disabled={saveClosure.isPending}
+                            >
+                              {saveClosure.isPending
+                                ? 'Salvando...'
+                                : 'Salvar'}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
                     </CardContent>
                   </Card>
                 </div>

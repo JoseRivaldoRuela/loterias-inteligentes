@@ -7,13 +7,16 @@ import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
 import { GeneratorPage } from '@/features/generator/pages/GeneratorPage'
 import { LibrariesPage } from '@/features/libraries/pages/LibrariesPage'
 import { LotteriesPage } from '@/features/lotteries/pages/LotteriesPage'
+import { SavedGamesPage } from '@/features/saved-games/pages/SavedGamesPage'
 import {
-  CheckingPage,
   LaboratoryPage,
   SettingsPage,
   SimulationsPage,
   StatisticsPage,
 } from '@/features/placeholder/pages/PlaceholderPages'
+import { PoolConferencesPage } from '@/features/pools/pages/PoolConferencesPage'
+import { PoolsPage } from '@/features/pools/pages/PoolsPage'
+import { ResultsPage } from '@/features/results/pages/ResultsPage'
 
 export function AppRouter() {
   const { session, loading } = useAuth()
@@ -47,8 +50,15 @@ export function AppRouter() {
       <Route path="/loterias" element={<LotteriesPage />} />
       <Route path="/bibliotecas" element={<LibrariesPage />} />
       <Route path="/gerador" element={<GeneratorPage />} />
+      <Route path="/gerador/escuro" element={<GeneratorPage mode="dark" />} />
+      <Route path="/gerador/manual" element={<GeneratorPage mode="manual" />} />
       <Route path="/fechamentos" element={<ClosuresPage />} />
-      <Route path="/conferencia" element={<CheckingPage />} />
+      <Route path="/salvos" element={<SavedGamesPage />} />
+      <Route path="/boloes" element={<PoolsPage />} />
+      <Route path="/convite" element={<Navigate to="/boloes" replace />} />
+      <Route path="/conferencia" element={<Navigate to="/conferencia/boloes" replace />} />
+      <Route path="/conferencia/boloes" element={<PoolConferencesPage />} />
+      <Route path="/resultados" element={<ResultsPage />} />
       <Route path="/estatisticas" element={<StatisticsPage />} />
       <Route path="/simulacoes" element={<SimulationsPage />} />
       <Route path="/laboratorio" element={<LaboratoryPage />} />
